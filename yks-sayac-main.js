@@ -57,13 +57,7 @@ settingsBtn.addEventListener("click", function () {
   }
 });
 topicsBtn.addEventListener("click", function () {
-  var w = Math.min(Math.round((screen.availWidth || 1600) * 0.75), 1300);
-  var h = Math.min(Math.round((screen.availHeight || 900) * 0.85), 980);
-  window.open(
-    location.pathname + "?view=topics",
-    "yksSayacTopics",
-    "width=" + w + ",height=" + h + ",resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no,status=no"
-  );
+  openAppView("topics", "yksSayacTopics", 0.75, 1300, 980);
 });
 document.getElementById("addTopicBtn").addEventListener("click", addTopicFromInput);
 document.getElementById("topicInput").addEventListener("keydown", function (e) {
@@ -200,6 +194,7 @@ if (pipBtn) {
   else pipBtn.addEventListener("click", openWidgetPip);
 }
 Array.prototype.forEach.call(document.querySelectorAll(".js-install-btn"), function (b) { b.addEventListener("click", installApp); });
+Array.prototype.forEach.call(document.querySelectorAll(".js-back-btn"), function (b) { b.addEventListener("click", goToWidgetHome); });
 Array.prototype.forEach.call(document.querySelectorAll(".js-reload-btn"), function (b) { b.addEventListener("click", function () { location.reload(); }); });
 Array.prototype.forEach.call(document.querySelectorAll(".js-check-update-btn"), function (b) { b.addEventListener("click", checkForUpdateManually); });
 setAppVersionNotes("Sürüm " + APP_VERSION, false);
@@ -252,13 +247,7 @@ document.getElementById("planView").style.display = isPlan ? "flex" : "none";
 var notesBtn = document.getElementById("notesBtn");
 if (notesBtn) {
   notesBtn.addEventListener("click", function () {
-    var w = Math.min(Math.round((screen.availWidth || 1600) * 0.8), 1200);
-    var h = Math.min(Math.round((screen.availHeight || 900) * 0.85), 850);
-    window.open(
-      location.pathname + "?view=notes",
-      "yksSayacNotes",
-      "width=" + w + ",height=" + h + ",resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no,status=no"
-    );
+    openAppView("notes", "yksSayacNotes", 0.8, 1200, 850);
   });
 }
 var cityBtn = document.getElementById("cityBtn");

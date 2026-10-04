@@ -11,7 +11,7 @@ function formatHM(totalSeconds) {
 }
 // ---- Seri (streak) sistemi ----
 
-var STREAK_THRESHOLD_SECONDS = 3 * 3600;
+var STREAK_THRESHOLD_SECONDS = 90 * 60;   // günlük seri için gereken çalışma süresi: 90 dakika
 var STREAK_MAX_LOOKBACK_DAYS = 1000;
 var CONFETTI_COLORS = ["#e7a33e", "#8fae8b", "#6b8fae", "#c97064", "#b58fd9", "#d9b56b"];
 var streakBase = 0;
@@ -91,9 +91,9 @@ function pulseStreakBadge(el) {
 }
 var STREAK_ZERO_MESSAGES = [
   "Bugün başla, seri bugün doğsun.",
-  "3 saatle ilk gününü kazan.",
+  "90 dakikayla ilk gününü kazan.",
   "Henüz serin yok, başlamak sende.",
-  "İlk adım: bugün 3 saat çalış.",
+  "İlk adım: bugün 90 dakika çalış.",
   "Bugün çalış, seriyi başlat."
 ];
 function getZeroStreakMessage() {

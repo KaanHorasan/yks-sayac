@@ -191,6 +191,12 @@ function setInstallRowVisible(visible) {
 function initInstallPrompt() {
   var standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
   if (standalone) return;
+  // iOS Safari "beforeinstallprompt" göndermez: elle ekleme yönergesini göster.
+  var ua = navigator.userAgent || "";
+  var isIos = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  if (isIos) {
+    Array.prototype.forEach.call(document.querySelectorAll(".js-ios-hint"), function (el) { el.style.display = ""; });
+  }
   window.addEventListener("beforeinstallprompt", function (e) {
     e.preventDefault();
     deferredInstallPrompt = e;

@@ -2,10 +2,14 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>YKS Sayaç</title>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="theme-color" content="#12161b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="YKS Sayaç">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" type="image/png" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -60,7 +64,7 @@
   </div>
 
   <div class="row streak-row">
-    <span class="streak-badge streak-badge-lg" id="streakBadge" title="Günlük 3+ saat çalışma serisi">
+    <span class="streak-badge streak-badge-lg" id="streakBadge" title="Günlük 90+ dakika çalışma serisi">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2c1 3-2 4-2 7a3 3 0 0 0 6 0c1.5 1.5 2 3.5 2 5.5A6.5 6.5 0 0 1 5 14.5C5 9 9 6 12 2z"/></svg>
       <span id="streakCount">0</span>
       <span class="streak-badge-label" id="streakLabel">günlük seri</span>
@@ -161,6 +165,7 @@
       <div id="installAppRow" class="js-install-row" style="display: none; margin-top: 8px;">
         <button type="button" class="backup-btn backup-btn-secondary js-install-btn" id="installAppBtn" style="width: 100%;">Uygulama olarak yükle</button>
       </div>
+      <p class="settings-note js-ios-hint" style="display: none; margin: 8px 0 0;">iPhone/iPad'de: Safari'de Paylaş simgesine (□↑) dokun, sonra "Ana Ekrana Ekle"yi seç.</p>
     </div>
   </div>
 
@@ -169,7 +174,10 @@
 <div class="dashboard" id="dashboardView">
   <div class="dash-inner">
     <div class="dash-header">
-      <div>
+      <button type="button" class="icon-btn js-back-btn" aria-label="Widget'a dön" title="Widget'a dön">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div>
         <div class="dash-title">bugünün konuları</div>
         <div class="dash-date" id="dashDate">—</div>
       </div>
@@ -186,7 +194,7 @@
     <div class="dash-card stopwatch-card">
       <div class="panel-header-row" style="margin-bottom: 12px;">
         <div class="panel-title" style="margin-bottom: 0;">ders kronometresi</div>
-        <span class="streak-badge" id="streakBadgeDash" title="Günlük 3+ saat çalışma serisi">
+        <span class="streak-badge" id="streakBadgeDash" title="Günlük 90+ dakika çalışma serisi">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2c1 3-2 4-2 7a3 3 0 0 0 6 0c1.5 1.5 2 3.5 2 5.5A6.5 6.5 0 0 1 5 14.5C5 9 9 6 12 2z"/></svg>
           <span id="streakCountDash">0</span>
         </span>
@@ -272,7 +280,10 @@
 <div class="notes-view" id="notesView">
   <div class="notes-inner">
     <div class="dash-header">
-      <div>
+      <button type="button" class="icon-btn js-back-btn" aria-label="Widget'a dön" title="Widget'a dön">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div>
         <div class="dash-title">not defteri</div>
         <div class="dash-date" id="notesDate">—</div>
       </div>
@@ -325,7 +336,10 @@
 <div class="city-view" id="cityView">
   <div class="city-view-inner">
     <div class="dash-header">
-      <div>
+      <button type="button" class="icon-btn js-back-btn" aria-label="Widget'a dön" title="Widget'a dön">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div>
         <div class="dash-title">şehrim</div>
         <div class="dash-date" id="cityViewDate">—</div>
       </div>
@@ -393,7 +407,10 @@
 <div class="exam-view" id="examView">
   <div class="exam-view-inner">
     <div class="dash-header">
-      <div>
+      <button type="button" class="icon-btn js-back-btn" aria-label="Widget'a dön" title="Widget'a dön">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div>
         <div class="dash-title">deneme takibi</div>
         <div class="dash-date" id="examViewDate">—</div>
       </div>
@@ -476,7 +493,10 @@
 <div class="plan-view" id="planView">
   <div class="plan-view-inner">
     <div class="dash-header">
-      <div>
+      <button type="button" class="icon-btn js-back-btn" aria-label="Widget'a dön" title="Widget'a dön">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div>
         <div class="dash-title">haftalık plan</div>
         <div class="dash-date" id="planViewDate">—</div>
       </div>
@@ -554,6 +574,7 @@
       <div class="js-install-row" style="display: none; margin-top: 8px;">
         <button type="button" class="backup-btn backup-btn-secondary js-install-btn" style="width: 100%;">Uygulama olarak yükle</button>
       </div>
+      <p class="settings-note js-ios-hint" style="display: none; margin: 8px 0 0;">iPhone/iPad'de: Safari'de Paylaş simgesine (□↑) dokun, sonra "Ana Ekrana Ekle"yi seç.</p>
     </div>
     <div class="dash-card">
       <div class="panel-title" style="margin-bottom: 8px;">motivasyon cümleleri</div>
@@ -602,6 +623,7 @@
       <div class="js-install-row" style="display: none; margin-top: 8px;">
         <button type="button" class="backup-btn backup-btn-secondary js-install-btn" style="width: 100%;">Uygulama olarak yükle</button>
       </div>
+      <p class="settings-note js-ios-hint" style="display: none; margin: 8px 0 0;">iPhone/iPad'de: Safari'de Paylaş simgesine (□↑) dokun, sonra "Ana Ekrana Ekle"yi seç.</p>
     </div>
 
     <div class="dash-card">

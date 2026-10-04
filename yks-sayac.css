@@ -31,9 +31,12 @@
     height: 100%;
   }
 
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
   body {
     margin: 0;
     min-height: 100vh;
+    min-height: 100dvh;
     background: var(--bg);
     font-family: "IBM Plex Serif", Georgia, serif;
     color: var(--ink);
@@ -43,11 +46,12 @@
   .widget {
     /* Pencere ne kadar büyük olursa olsun widget ortada durur (küçük pencerede eski görünümle aynı). */
     position: fixed;
-    inset: 0;
+    inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
     margin: auto;
     height: fit-content;
     width: 300px;
     max-height: calc(100vh - 40px);
+    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     background: var(--panel);
     border: 1px dashed var(--rule);
     border-radius: var(--radius);
@@ -474,6 +478,7 @@
   .auth-gate {
     display: none;
     min-height: 100vh;
+    min-height: 100dvh;
     justify-content: center;
     align-items: center;
     padding: 24px;
@@ -567,6 +572,7 @@
   .coach-view {
     display: none;
     min-height: 100vh;
+    min-height: 100dvh;
     padding: 48px 24px;
     justify-content: center;
     align-items: flex-start;
@@ -962,6 +968,7 @@
   .exam-view {
     display: none;
     min-height: 100vh;
+    min-height: 100dvh;
     padding: 48px 24px;
     justify-content: center;
     align-items: flex-start;
@@ -975,6 +982,7 @@
   .plan-view {
     display: none;
     min-height: 100vh;
+    min-height: 100dvh;
     padding: 48px 24px;
     justify-content: center;
     align-items: flex-start;
@@ -1613,6 +1621,7 @@
   .dashboard {
     display: none;
     min-height: 100vh;
+    min-height: 100dvh;
     padding: 48px 24px;
     justify-content: center;
     align-items: flex-start;
@@ -2109,6 +2118,7 @@
   .city-view {
     display: none;
     min-height: 100vh;
+    min-height: 100dvh;
     padding: 48px 24px;
     justify-content: center;
     align-items: flex-start;
@@ -2581,6 +2591,7 @@
   .notes-view {
     display: none;
     min-height: 100vh;
+    min-height: 100dvh;
     padding: 48px 24px;
     justify-content: center;
     align-items: flex-start;
@@ -2927,3 +2938,34 @@
     .notes-view { padding: 28px 16px; }
   }
   .icon-btn.active { color: var(--amber); }
+
+  /* ================= Mobil / dokunmatik destek ================= */
+  .js-back-btn { display: none; }
+
+  /* Dokunmatik birincil cihazlar (telefon, tablet): büyük dokunma hedefleri, ayrı pencere yerine aynı pencerede gezinme */
+  @media (pointer: coarse) {
+    html, body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
+    button, .icon-btn, select, summary, [role="button"], label { touch-action: manipulation; }
+    .icon-btn { min-width: 40px; min-height: 40px; padding: 0; }
+    .icon-btn svg { width: 20px; height: 20px; }
+    .save-btn, .backup-btn, .auth-link-btn { min-height: 40px; }
+    input, textarea, select, [contenteditable="true"] { font-size: 16px !important; }  /* iOS odaklanınca yakınlaştırmasın */
+    .js-back-btn { display: flex; }
+    #pipBtn, #fullscreenBtn, #notesFullscreenBtn, #cityFullscreenBtn, #examFullscreenBtn { display: none !important; }
+    .dash-header { gap: 6px; align-items: center; }
+    .dash-header > div:nth-child(2) { flex: 1; min-width: 0; }
+    .dashboard, .city-view, .notes-view, .exam-view, .plan-view, .coach-view, .admin-view {
+      padding-left: max(16px, env(safe-area-inset-left, 0px));
+      padding-right: max(16px, env(safe-area-inset-right, 0px));
+      padding-top: max(16px, env(safe-area-inset-top, 0px));
+      padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    }
+  }
+
+  /* Telefon ve tablet: widget ekrana yayılır (en çok 420px), simgeler iki satırda düzenli durur */
+  @media (pointer: coarse) {
+    .widget { width: min(calc(100vw - 24px), 420px); }
+    .widget .row.header { flex-wrap: wrap; row-gap: 4px; }
+    .widget .wordmark { flex: 1 1 100%; text-align: center; }
+    .widget .icon-group { flex: 1 1 100%; display: grid; grid-template-columns: repeat(5, 1fr); justify-items: center; gap: 2px; }
+  }

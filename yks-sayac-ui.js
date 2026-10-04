@@ -66,33 +66,30 @@ function renderCoachLinkStatus() {
     if (input) input.placeholder = "örn. AB12CD";
   }
 }
-function openExamView() {
-  var w = Math.min(Math.round((screen.availWidth || 1600) * 0.7), 900);
-  var h = Math.min(Math.round((screen.availHeight || 900) * 0.85), 850);
+// Dokunmatik birincil cihaz (telefon/tablet): ayrı pencere açmak yerine aynı pencerede gezinilir.
+function isTouchPrimary() {
+  return !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+}
+function openAppView(view, windowName, widthFrac, widthMax, heightMax) {
+  var url = location.pathname + "?view=" + view;
+  if (isTouchPrimary()) {
+    location.assign(url);
+    return;
+  }
+  var w = Math.min(Math.round((screen.availWidth || 1600) * widthFrac), widthMax);
+  var h = Math.min(Math.round((screen.availHeight || 900) * 0.85), heightMax);
   window.open(
-    location.pathname + "?view=exam",
-    "yksSayacExam",
+    url,
+    windowName,
     "width=" + w + ",height=" + h + ",resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no,status=no"
   );
 }
-function openCityView() {
-  var w = Math.min(Math.round((screen.availWidth || 1600) * 0.7), 900);
-  var h = Math.min(Math.round((screen.availHeight || 900) * 0.85), 850);
-  window.open(
-    location.pathname + "?view=city",
-    "yksSayacCity",
-    "width=" + w + ",height=" + h + ",resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no,status=no"
-  );
+function goToWidgetHome() {
+  location.assign(location.pathname);
 }
-function openPlanView() {
-  var w = Math.min(Math.round((screen.availWidth || 1600) * 0.7), 900);
-  var h = Math.min(Math.round((screen.availHeight || 900) * 0.85), 850);
-  window.open(
-    location.pathname + "?view=plan",
-    "yksSayacPlan",
-    "width=" + w + ",height=" + h + ",resizable=yes,scrollbars=yes,toolbar=no,menubar=no,location=no,status=no"
-  );
-}
+function openExamView() { openAppView("exam", "yksSayacExam", 0.7, 900, 850); }
+function openCityView() { openAppView("city", "yksSayacCity", 0.7, 900, 850); }
+function openPlanView() { openAppView("plan", "yksSayacPlan", 0.7, 900, 850); }
 function roundTotals(totals) {
   var out = {};
   Object.keys(totals || {}).forEach(function (name) {

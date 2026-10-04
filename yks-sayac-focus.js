@@ -252,7 +252,22 @@ function renderFocusModeBlock() {
 var focusHiddenTimer = null;
 var FOCUS_HIDDEN_GRACE_MS = 10000; // sekme/pencere degistirince hemen sayma - 10sn tolerans
 
+// Ekran kilidi (özellikle telefonda): odak boyunca ekran kapanmasın; kapanırsa sayfa gizlenir ve "dikkat dağınıklığı" sayılırdı.
+var focusWakeLock = null;
+function acquireFocusWakeLock() {
+  if (!("wakeLock" in navigator) || focusWakeLock) return;
+  navigator.wakeLock.request("screen").then(function (lock) {
+    focusWakeLock = lock;
+    lock.addEventListener("release", function () { if (focusWakeLock === lock) focusWakeLock = null; });
+  }).catch(function () {});
+}
+function releaseFocusWakeLock() {
+  var lock = focusWakeLock;
+  focusWakeLock = null;
+  if (lock) { try { lock.release(); } catch (e) {} }
+}
 function handleFocusVisibilityChange() {
+  if (!document.hidden && focusModeActive) acquireFocusWakeLock();
   if (!focusModeActive || focusModeState !== "active") return;
   if (document.hidden) {
     if (focusHiddenTimer) clearTimeout(focusHiddenTimer);
@@ -300,8 +315,11 @@ function enterFocusMode(targetMinutes) {
   document.addEventListener("visibilitychange", handleFocusVisibilityChange);
   window.addEventListener("beforeunload", handleFocusBeforeUnload);
 
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(function () {});
+  acquireFocusWakeLock();
+  // iPhone Safari'de requestFullscreen yok; çağırmak hata fırlatırdı.
+  if (!document.fullscreenElement && typeof document.documentElement.requestFullscreen === "function") {
+    var fsPromise = document.documentElement.requestFullscreen();
+    if (fsPromise && typeof fsPromise.catch === "function") fsPromise.catch(function () {});
   }
 }
 function updateFocusTick() {
@@ -350,6 +368,7 @@ function exitFocusMode(showSummary, completed) {
 
   document.removeEventListener("visibilitychange", handleFocusVisibilityChange);
   window.removeEventListener("beforeunload", handleFocusBeforeUnload);
+  releaseFocusWakeLock();
 
   if (document.fullscreenElement) {
     document.exitFullscreen().catch(function () {});
