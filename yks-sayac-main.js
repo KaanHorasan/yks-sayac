@@ -199,8 +199,10 @@ if (pipBtn) {
   if (!widgetPipSupported()) pipBtn.style.display = "none";
   else pipBtn.addEventListener("click", openWidgetPip);
 }
-var installAppBtn = document.getElementById("installAppBtn");
-if (installAppBtn) installAppBtn.addEventListener("click", installApp);
+Array.prototype.forEach.call(document.querySelectorAll(".js-install-btn"), function (b) { b.addEventListener("click", installApp); });
+Array.prototype.forEach.call(document.querySelectorAll(".js-reload-btn"), function (b) { b.addEventListener("click", function () { location.reload(); }); });
+Array.prototype.forEach.call(document.querySelectorAll(".js-check-update-btn"), function (b) { b.addEventListener("click", checkForUpdateManually); });
+setAppVersionNotes("Sürüm " + APP_VERSION, false);
 initInstallPrompt();
 registerServiceWorker();
 var cloudBackupNowBtn = document.getElementById("cloudBackupNowBtn");

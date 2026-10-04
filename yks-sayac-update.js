@@ -8,7 +8,7 @@
 // Firestore'daki appConfig/latestVersion belgesi yalnızca duyuru kanalı olarak kalır (indirme yok).
 // ============================================================================
 var swHadController = false;
-var swReloadWired = false;
+var swUpdateReady = false;
 function compareVersions(a, b) {
   var pa = String(a || "0").split(".").map(function (n) { return parseInt(n, 10) || 0; });
   var pb = String(b || "0").split(".").map(function (n) { return parseInt(n, 10) || 0; });
@@ -47,23 +47,49 @@ function setUpdateBadge(on) {
     else settingsBtn.classList.remove("has-update-badge");
   }
 }
+// Sürüm satırı hem widget ayarlarında hem koç/yönetici panelinde var: hepsi .js-version-note ile güncellenir.
+function setAppVersionNotes(text, attention) {
+  Array.prototype.forEach.call(document.querySelectorAll(".js-version-note"), function (el) {
+    el.textContent = text;
+    el.classList.toggle("settings-note-attention", !!attention);
+  });
+}
+function showReloadButtons(show) {
+  Array.prototype.forEach.call(document.querySelectorAll(".js-reload-btn"), function (b) {
+    b.style.display = show ? "" : "none";
+    b.disabled = false;
+  });
+}
 function onNewVersionReady() {
-  var note = document.getElementById("versionNote");
-  var btn = document.getElementById("updateNowBtn");
-  if (note) {
-    note.textContent = "Sürüm " + APP_VERSION + " · yeni sürüm hazır, yenileyince devreye girer.";
-    note.classList.add("settings-note-attention");
-  }
-  if (btn) {
-    btn.style.display = "";
-    btn.disabled = false;
-    if (!swReloadWired) {
-      swReloadWired = true;
-      btn.addEventListener("click", function () { location.reload(); });
-    }
-  }
+  swUpdateReady = true;
+  setAppVersionNotes("Sürüm " + APP_VERSION + " · yeni sürüm hazır, yenileyince devreye girer.", true);
+  showReloadButtons(true);
   setUpdateBadge(true);
-  showUpdateToast("Yeni sürüm yüklendi. Ayarlar'dan 'Şimdi Yenile' ile geçebilirsin.");
+  showUpdateToast("Yeni sürüm yüklendi. Ayarlar'dan veya panelden 'Şimdi Yenile' ile geçebilirsin.");
+}
+function checkForUpdateManually() {
+  if (swUpdateReady) { location.reload(); return Promise.resolve(); }
+  setAppVersionNotes("Sürüm " + APP_VERSION + " · güncelleme aranıyor…", false);
+  if (!("serviceWorker" in navigator)) {
+    setAppVersionNotes("Sürüm " + APP_VERSION + " · bu tarayıcıda otomatik güncelleme yok, sayfayı yenile.", false);
+    return Promise.resolve();
+  }
+  return navigator.serviceWorker.getRegistration().then(function (reg) {
+    if (!reg) {
+      setAppVersionNotes("Sürüm " + APP_VERSION + " · güncelleme servisi kayıtlı değil, sayfayı yenile.", false);
+      return null;
+    }
+    return reg.update().then(function () {
+      return new Promise(function (resolve) {
+        setTimeout(function () {
+          if (!swUpdateReady) setAppVersionNotes("Sürüm " + APP_VERSION + " · uygulama güncel.", false);
+          resolve();
+        }, 4000);
+      });
+    });
+  }).catch(function () {
+    setAppVersionNotes("Sürüm " + APP_VERSION + " · güncelleme kontrol edilemedi (internet bağlantını kontrol et).", false);
+  });
 }
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
@@ -82,18 +108,13 @@ function registerServiceWorker() {
   });
 }
 function checkForUpdate() {
-  var note = document.getElementById("versionNote");
-  if (note && !note.classList.contains("settings-note-attention")) note.textContent = "Sürüm " + APP_VERSION;
+  if (!swUpdateReady) setAppVersionNotes("Sürüm " + APP_VERSION, false);
   try {
     fbDb.collection("appConfig").doc("latestVersion").get().then(function (doc) {
       if (!doc.exists) return;
       var data = doc.data() || {};
       if (data.version && compareVersions(data.version, APP_VERSION) > 0 && !data.downloadUrl) {
-        var n = document.getElementById("versionNote");
-        if (n) {
-          n.textContent = "Sürüm " + APP_VERSION + " · yeni sürüm var: v" + data.version + (data.message ? " — " + data.message : "") + ".";
-          n.classList.add("settings-note-attention");
-        }
+        setAppVersionNotes("Sürüm " + APP_VERSION + " · yeni sürüm var: v" + data.version + (data.message ? " — " + data.message : "") + ".", true);
         setUpdateBadge(true);
         showUpdateToastOnce(data.version, "Yeni bir sürüm var (v" + data.version + "). Ayarlar'dan detay gör.");
       }

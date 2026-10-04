@@ -184,8 +184,9 @@ function openWidgetPip() {
 
 // ---- Uygulama olarak yükleme (PWA) ----
 function setInstallRowVisible(visible) {
-  var row = document.getElementById("installAppRow");
-  if (row) row.style.display = visible ? "" : "none";
+  Array.prototype.forEach.call(document.querySelectorAll(".js-install-row"), function (row) {
+    row.style.display = visible ? "" : "none";
+  });
 }
 function initInstallPrompt() {
   var standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
