@@ -41,9 +41,11 @@
   }
 
   .widget {
+    /* Pencere ne kadar büyük olursa olsun widget ortada durur (küçük pencerede eski görünümle aynı). */
     position: fixed;
-    right: 20px;
-    bottom: 20px;
+    inset: 0;
+    margin: auto;
+    height: fit-content;
     width: 300px;
     max-height: calc(100vh - 40px);
     background: var(--panel);
@@ -101,7 +103,7 @@
     border-radius: 50%;
     background: radial-gradient(circle, var(--amber-soft), transparent 70%);
     filter: blur(18px);
-    animation: pulse 7s ease-in-out infinite;
+    /* Sürekli çalışan "pulse" animasyonu kaldırıldı: bulanık katmanı saniyede 60 kez yeniden birleştirip CPU/GPU ve RAM harcıyordu. */
     pointer-events: none;
   }
 

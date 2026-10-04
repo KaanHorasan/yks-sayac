@@ -340,6 +340,7 @@ Promise.all([loadSettings(), loadProgress(), loadTopics(), loadStudy()]).then(fu
         }, 180000);
       }
     };
+    fitWidgetWindow();
     wireLogoutButtons();
     initAuthGate(false);
   }

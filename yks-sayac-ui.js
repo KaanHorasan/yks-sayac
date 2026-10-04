@@ -100,3 +100,15 @@ function roundTotals(totals) {
   });
   return out;
 }
+
+// Yüklü uygulama penceresi dev boyutta açıldıysa (tarayıcı penceresinden kurulunca olur) widget boyutuna küçültür.
+// Zaten küçükse ya da kullanıcı özellikle büyütmüşse (700x800'den küçük) dokunmaz. Tarayıcı sekmesinde çalışmaz.
+function fitWidgetWindow() {
+  var standalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+  if (!standalone || typeof window.resizeTo !== "function") return false;
+  if (window.innerWidth <= 700 && window.innerHeight <= 800) return false;
+  var frameW = Math.max(0, window.outerWidth - window.innerWidth);
+  var frameH = Math.max(0, window.outerHeight - window.innerHeight);
+  try { window.resizeTo(340 + frameW, 560 + frameH); } catch (e) { return false; }
+  return true;
+}

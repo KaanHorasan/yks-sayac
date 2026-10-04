@@ -149,6 +149,8 @@ function maybeCelebrateStreak(displayValue, qualifiesToday) {
     }
   }).catch(function () { streakCelebrationChecking = false; });
 }
+var STREAK_POLL_MS = 5000;
+var lastStreakPollTs = 0;
 function updateStreakDisplay() {
   var todayStr = dateStr(new Date());
   if (streakDateStr !== todayStr) {
@@ -158,6 +160,9 @@ function updateStreakDisplay() {
     computeBaseStreak().then(pollTodayStreak);
     return;
   }
+  var nowMs = Date.now();
+  if (nowMs - lastStreakPollTs < STREAK_POLL_MS) return;   // depolama her saniye değil, birkaç saniyede bir okunur
+  lastStreakPollTs = nowMs;
   pollTodayStreak();
 }
 function pollTodayStreak() {
@@ -244,12 +249,18 @@ function entriesFromTotals(totals) {
   }).filter(function (e) { return e.secs > 0; })
     .sort(function (a, b) { return b.secs - a.secs; });
 }
+var lastPieSig = null;
 function drawPie(entries) {
   var pie = document.getElementById("subjectPie");
   var legend = document.getElementById("subjectPieLegend");
   if (!pie || !legend) return;
 
   var total = entries.reduce(function (sum, e) { return sum + e.secs; }, 0);
+
+  // Dilimler yavaş değişir: 10 sn'lik dilimlere göre değişmediyse yeniden çizme.
+  var pieSig = entries.map(function (e) { return e.name + ":" + Math.floor(e.secs / 10); }).join("|");
+  if (pieSig === lastPieSig && legend.childNodes.length) return;
+  lastPieSig = pieSig;
 
   legend.innerHTML = "";
 
@@ -333,6 +344,7 @@ function renderSubjectPie(force) {
     drawPie(entriesFromTotals(totals));
   });
 }
+var lastBreakdownSig = null;
 function renderSubjectBreakdown() {
   var wrap = document.getElementById("subjectBreakdown");
   if (!wrap) return;
@@ -343,6 +355,10 @@ function renderSubjectBreakdown() {
   }).filter(function (e) { return e.secs > 0; })
     .sort(function (a, b) { return b.secs - a.secs; });
 
+  // Görünen metin dakika hassasiyetinde: değişmediyse DOM'u yeniden kurma.
+  var sig = entries.map(function (e) { return e.name + ":" + formatHM(e.secs); }).join("|");
+  if (sig === lastBreakdownSig && wrap.childNodes.length) return;
+  lastBreakdownSig = sig;
   wrap.innerHTML = "";
   if (entries.length === 0) {
     wrap.innerHTML = '<p class="dash-empty" style="display:block;">Bugün henüz kayıtlı konu yok.</p>';
@@ -361,6 +377,7 @@ function renderSubjectBreakdown() {
   });
 }
 function toggleStudy() {
+  lastStreakPollTs = 0;
   var input = document.getElementById("stopwatchSubject");
   if (studyState.running) {
     var elapsed = elapsedRunningSeconds();
