@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>YKS Sayaç · Hızlı Bakış</title>
+<link rel="manifest" href="manifest-glance.webmanifest">
+<meta name="theme-color" content="#12161b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="YKS Bakış">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="icon" type="image/png" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/glance-apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="yks-sayac.css">
+</head>
+<body class="glance-body">
+<main class="glance" id="glance" aria-live="off">
+  <div class="glance-inner">
+    <div class="glance-target" id="glanceTarget">&nbsp;</div>
+    <div class="glance-days" id="glanceDays">–</div>
+    <div class="glance-days-label" id="glanceDaysLabel">gün kaldı</div>
+    <div class="glance-clock" id="glanceClock">-- : -- : --</div>
+
+    <div class="glance-stats">
+      <div class="glance-stat">
+        <div class="glance-stat-label">bugün çalışma</div>
+        <div class="glance-stat-value" id="glanceStudy">0dk</div>
+        <div class="glance-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="glanceBar"><span id="glanceBarFill"></span></div>
+        <div class="glance-stat-hint" id="glanceStudyHint">&nbsp;</div>
+      </div>
+      <div class="glance-stat">
+        <div class="glance-stat-label">günlük seri</div>
+        <div class="glance-stat-value"><span class="glance-flame" aria-hidden="true">🔥</span> <span id="glanceStreak">0</span></div>
+        <div class="glance-stat-hint" id="glanceStreakHint">&nbsp;</div>
+      </div>
+    </div>
+
+    <p class="glance-quote" id="glanceQuote">&nbsp;</p>
+
+    <div class="glance-actions">
+      <button type="button" class="save-btn glance-btn" id="glanceOpenBtn">Uygulamayı aç</button>
+      <button type="button" class="backup-btn backup-btn-secondary glance-btn" id="glanceWakeBtn" style="display: none;" aria-pressed="false">Ekranı açık tut</button>
+      <button type="button" class="backup-btn backup-btn-secondary glance-btn" id="glanceInstallBtn" style="display: none;">Ana ekrana ekle</button>
+    </div>
+    <p class="glance-hint" id="glanceIosHint" style="display: none;">iPhone/iPad'de: Safari'de Paylaş simgesine (□↑) dokun, sonra "Ana Ekrana Ekle"yi seç.</p>
+    <p class="glance-hint" id="glanceOfflineNote" style="display: none;">Bu ekran yalnızca bu cihazdaki çalışma verisini gösterir.</p>
+  </div>
+</main>
+<script src="yks-sayac-errors.js"></script>
+<script src="yks-sayac-core.js"></script>
+<script src="yks-sayac-study.js"></script>
+<script src="yks-sayac-widget.js"></script>
+<script src="yks-sayac-glance.js"></script>
+</body>
+</html>

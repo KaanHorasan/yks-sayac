@@ -1,6 +1,6 @@
 // YKS Sayaç Service Worker — ağ öncelikli, çevrimdışıyken önbellek.
 // Sürüm numarası ve dosya listesi her yayında yayın betiği tarafından doldurulur (aşağıdaki iki satır).
-var VERSION = "2.1.1";
+var VERSION = "2.2.0";
 var CACHE = "yks-sayac-" + VERSION;
 var FILES = [
   "./",
@@ -30,6 +30,13 @@ var FILES = [
   "yks-sayac-plan.js",
   "yks-sayac-sync.js",
   "yks-sayac-main.js",
+  "glance.html",
+  "manifest-glance.webmanifest",
+  "yks-sayac-glance.js",
+  "icons/glance-192.png",
+  "icons/glance-512.png",
+  "icons/glance-maskable-512.png",
+  "icons/glance-apple-touch-icon.png",
   "icons/icon-192.png",
   "icons/icon-512.png",
   "icons/icon-maskable-512.png",

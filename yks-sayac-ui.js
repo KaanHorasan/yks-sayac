@@ -109,3 +109,15 @@ function fitWidgetWindow() {
   try { window.resizeTo(340 + frameW, 560 + frameH); } catch (e) { return false; }
   return true;
 }
+
+// "Ayrı simge" için hızlı bakış sayfasının tam adresini panoya kopyalar (tarayıcıda açıp ana ekrana eklemek için).
+function copyGlanceLink() {
+  var url = new URL("glance.html", location.href).href;
+  var done = function () { showUpdateToast("Bağlantı kopyalandı. Tarayıcıda açıp ana ekrana ekleyebilirsin."); };
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    navigator.clipboard.writeText(url).then(done).catch(function () { window.prompt("Bağlantıyı kopyala:", url); });
+  } else {
+    window.prompt("Bağlantıyı kopyala:", url);
+  }
+}
+

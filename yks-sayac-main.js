@@ -200,6 +200,10 @@ Array.prototype.forEach.call(document.querySelectorAll(".js-check-update-btn"), 
 setAppVersionNotes("Sürüm " + APP_VERSION, false);
 initInstallPrompt();
 registerServiceWorker();
+var openGlanceBtn = document.getElementById("openGlanceBtn");
+if (openGlanceBtn) openGlanceBtn.addEventListener("click", function () { location.assign("glance.html"); });
+var copyGlanceLinkBtn = document.getElementById("copyGlanceLinkBtn");
+if (copyGlanceLinkBtn) copyGlanceLinkBtn.addEventListener("click", copyGlanceLink);
 var cloudBackupNowBtn = document.getElementById("cloudBackupNowBtn");
 var cloudBackupRestoreBtn = document.getElementById("cloudBackupRestoreBtn");
 if (cloudBackupNowBtn) {
