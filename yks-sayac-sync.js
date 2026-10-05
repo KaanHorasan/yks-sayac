@@ -50,7 +50,7 @@ function scheduleAdminSummarySync() {
     buildStudentSummaryPayload().then(function (payload) { syncStudentSummary(currentUserUid, payload); });
   }, 2000);
 }
-function doApplyAdminGrant(g) {
+function doApplyAdminGrant(g, silent) {
   if (!g || typeof g !== "object") return Promise.resolve(false);
   var note = typeof g.note === "string" ? g.note.slice(0, 80) : "";
   if (g.type === "coins") {
@@ -64,9 +64,11 @@ function doApplyAdminGrant(g) {
       return saveCity();
     }).then(function () {
       try { renderCity(); } catch (e) {}
-      showUpdateToast(amt > 0
-        ? "🎁 Yönetici sana +" + amt + " altın ekledi" + (note ? ": " + note : "")
-        : "Yönetici hesabından " + Math.abs(amt) + " altın düştü" + (note ? ": " + note : ""));
+      if (!silent) {
+        showUpdateToast(amt > 0
+          ? "🎁 Yönetici sana +" + amt + " altın ekledi" + (note ? ": " + note : "")
+          : "Yönetici hesabından " + Math.abs(amt) + " altın düştü" + (note ? ": " + note : ""));
+      }
       return true;
     });
   }
@@ -90,7 +92,7 @@ function doApplyAdminGrant(g) {
       // bugünkü ders süreleri bellekte de tutulur; çalışan sayaç alanlarına dokunmadan sadece süreleri güncelle
       if (date === dateStr(new Date())) studyState.subjects = rec.subjects;
       try { renderStudy(); renderSubjectPie(true); } catch (e) {}
-      showUpdateToast("🎁 Yönetici sana " + adminDurationText(secs) + " çalışma süresi ekledi (" + subject + ")" + (note ? ": " + note : ""));
+      if (!silent) showUpdateToast("🎁 Yönetici sana " + adminDurationText(secs) + " çalışma süresi ekledi (" + subject + ")" + (note ? ": " + note : ""));
       return true;
     });
   }
@@ -121,6 +123,75 @@ window.yksApplyAdminGrant = function (id, g) {
   }).catch(function () { return false; });
   return adminGrantChain;
 };
+// ---- Yedekten geri yüklemeden sonra yönetici işlemlerini yeniden uygula ----
+// Yedek, alındığı andaki altın/çalışma süresini içerir; yönetici o andan SONRA altın düştüyse ya da süre eklediyse,
+// geri yükleme bunları silerdi (Firestore'da "uygulandı" işaretli oldukları için bir daha uygulanmazlar).
+// Çözüm: yedeğin alındığı andan (exportedAt) sonra uygulanmış işlemler yeniden uygulanır. İlerleme yerelde tutulur;
+// çevrimdışıysa ya da yarıda kesilirse bir sonraki açılışta kaldığı yerden devam eder, hiçbir işlem iki kez uygulanmaz.
+var GRANT_REAPPLY_KEY = "grant-reapply-state";
+function scheduleGrantReapply(sinceMs) {
+  var since = Math.floor(Number(sinceMs));
+  if (!isFinite(since) || since <= 0) return Promise.resolve();
+  return storageSet(GRANT_REAPPLY_KEY, JSON.stringify({ since: since, done: [] }));
+}
+function promiseWithTimeout(promise, ms) {
+  return new Promise(function (resolve, reject) {
+    var t = setTimeout(function () { reject(new Error("zaman aşımı")); }, ms);
+    promise.then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
+  });
+}
+function runGrantReapply() {
+  if (typeof currentUserUid === "undefined" || !currentUserUid || typeof fbDb === "undefined" || !fbDb) return Promise.resolve(0);
+  return storageGet(GRANT_REAPPLY_KEY).then(function (raw) {
+    var st = null;
+    try { st = JSON.parse(raw); } catch (e) {}
+    var since = st ? Number(st.since) : 0;
+    if (!st || !isFinite(since) || since <= 0) return 0;
+    var done = Array.isArray(st.done) ? st.done.slice() : [];
+    var col = fbDb.collection("studentData").doc(currentUserUid).collection("adminGrants");
+    return promiseWithTimeout(col.get(), 15000).then(function (snap) {
+      var list = [];
+      snap.forEach(function (d) {
+        var g = d.data() || {};
+        if (g.applied !== true) return;                          // bekleyenler zaten normal akışla uygulanır
+        if (g.type !== "coins" && g.type !== "study") return;    // duyurular tekrar gösterilmez
+        if (done.indexOf(d.id) >= 0) return;
+        var at = Number(g.appliedAt) || Number(g.createdAt) || 0;
+        if (at > since) list.push({ id: d.id, at: at, g: g });
+      });
+      list.sort(function (a, b) { return a.at - b.at; });
+      var count = 0;
+      var chain = Promise.resolve();
+      list.forEach(function (item) {
+        chain = chain.then(function () {
+          return doApplyAdminGrant(item.g, true).then(function (applied) {
+            if (applied) count++;
+            done.push(item.id);   // geçersiz olanlar da işlendi sayılır
+            return storageSet(GRANT_REAPPLY_KEY, JSON.stringify({ since: since, done: done }));
+          });
+        });
+      });
+      return chain.then(function () { return count; });
+    }).then(function (count) {
+      return storageSet(GRANT_REAPPLY_KEY, "").then(function () {
+        if (count > 0) {
+          showUpdateToast("Yedekten sonraki " + count + " yönetici işlemin yeniden uygulandı.");
+          scheduleAdminSummarySync();
+        }
+        return count;
+      });
+    });
+  }).catch(function (err) {
+    console.error("Yönetici işlemleri yeniden uygulanamadı (sonra tekrar denenecek):", err);
+    return 0;
+  });
+}
+function reapplyAdminGrantsSince() {
+  // Normal işlem akışıyla aynı sıraya girer: altın/şehir verisi aynı anda iki yerden okunup yazılmasın.
+  var run = adminGrantChain.then(function () { return runGrantReapply(); });
+  adminGrantChain = run.then(function () { return true; }, function () { return true; });
+  return run;
+}
 function buildStudentSummaryPayload() {
   var recs = (examState && examState.records) || [];
   var bestTYT = 0, bestAYT = 0;

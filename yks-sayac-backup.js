@@ -279,6 +279,7 @@ function maybeAutoBackup() {
   }).catch(function (err) { console.error("Otomatik yedekleme hatası:", err); });
 }
 var pendingRestoreData = null;
+var pendingRestoreExportedAt = 0;
 // Dosyadan ya da buluttan gelen yedeği doğrular ve onay kutusunu açar (true = onaya hazır).
 function stagePendingRestore(parsed) {
   if (!parsed || typeof parsed.data !== "object" || !parsed.data) {
@@ -291,6 +292,7 @@ function stagePendingRestore(parsed) {
     return false;
   }
   pendingRestoreData = parsed.data;
+  pendingRestoreExportedAt = Date.parse(parsed.exportedAt) || 0;   // yedeğin alındığı an: sonrasındaki yönetici işlemleri yeniden uygulanır
   var box = document.getElementById("backupConfirmBox");
   var text = document.getElementById("backupConfirmText");
   if (text) {
@@ -344,8 +346,17 @@ function confirmPendingRestore() {
       }
     } catch (e) {}
   }
+  var sinceMs = pendingRestoreExportedAt;
   Promise.all(keys.map(function (k) { return storageSet(k, data[k]); })).then(function () {
     pendingRestoreData = null;
+    pendingRestoreExportedAt = 0;
+    if (!(sinceMs > 0)) return null;
+    showBackupStatus("Yönetici işlemleri kontrol ediliyor…", false);
+    // Yedekten sonra yöneticinin düştüğü/eklediği altın ve süreler geri gelmesin; çevrimdışıysa sonraki açılışta uygulanır.
+    return scheduleGrantReapply(sinceMs).then(function () {
+      return Promise.race([reapplyAdminGrantsSince(), new Promise(function (resolve) { setTimeout(resolve, 8000); })]);
+    });
+  }).then(function () {
     showBackupStatus(keys.length + " kayıt geri yüklendi. Sayfa yenileniyor…", false);
     setTimeout(function () { location.reload(); }, 900);
   }).catch(function (err) {

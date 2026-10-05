@@ -283,7 +283,7 @@ function renderExamYksEstimate() {
 function deleteExamRecord(id) {
   var rec = examState.records.filter(function (r) { return r.id === id; })[0];
   if (!rec) return;
-  var label = (rec.name || EXAM_TEMPLATES[rec.examKey].label) + " · " + dateStr(new Date(rec.date));
+  var label = (rec.name || (EXAM_TEMPLATES[rec.examKey] || { label: String(rec.examKey || "deneme") }).label) + " · " + dateStr(new Date(rec.date));
   if (!confirm('"' + label + '" kaydını silmek istediğine emin misin?')) return;
   examState.records = examState.records.filter(function (r) { return r.id !== id; });
   saveExamRecords();
@@ -319,7 +319,7 @@ function renderExamHistory() {
     li.innerHTML =
       '<div class="exam-history-row">' +
       '<span class="exam-history-date">' + d.getDate() + " " + months[d.getMonth()] + '</span>' +
-      '<span class="exam-history-info"><span class="exam-history-type">' + EXAM_TEMPLATES[r.examKey].label + '</span>' +
+      '<span class="exam-history-info"><span class="exam-history-type">' + escapeHtmlText((EXAM_TEMPLATES[r.examKey] || { label: String(r.examKey || "?") }).label) + '</span>' +
       '<span class="exam-history-name">' + escapeHtmlText(r.name || "İsimsiz deneme") + '</span></span>' +
       '<span class="exam-history-net">' + r.totalNet.toFixed(2) + '</span>' +
       '<button type="button" class="exam-history-toggle" aria-label="Ders detayı">' + (expanded ? "▲" : "▼") + '</button>' +

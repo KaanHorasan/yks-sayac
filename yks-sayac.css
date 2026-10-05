@@ -1105,13 +1105,15 @@
 
   .exam-chart-stats {
     display: flex;
-    gap: 28px;
+    flex-wrap: wrap;          /* dar ekranda taşmasın */
+    gap: 10px 28px;
     margin-bottom: 14px;
   }
 
   .exam-chart-stat {
     display: flex;
     flex-direction: column;
+    min-width: 0;
   }
 
   .exam-chart-stat-value {
@@ -1156,10 +1158,14 @@
     font-family: "IBM Plex Mono", monospace;
     font-size: 11px;
     color: var(--ink-dim);
-    min-width: 150px;
-    flex-shrink: 0;
+    min-width: min(150px, 100%);
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    flex-shrink: 1;
   }
   .yks-estimate-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
     font-family: "IBM Plex Mono", monospace;
     font-size: 11px;
     color: var(--ink);
@@ -1288,12 +1294,15 @@
   .exam-history-info { flex: 1; min-width: 0; }
 
   .exam-history-type {
+    display: block;
     font-family: "IBM Plex Mono", monospace;
     font-size: 10px;
     color: var(--amber);
   }
 
   .exam-history-name {
+    display: block;   /* inline span'de overflow/ellipsis çalışmaz: uzun ad net puanın üstüne biniyordu */
+    min-width: 0;
     font-family: "IBM Plex Serif", serif;
     font-size: 13px;
     color: var(--ink);
@@ -2969,3 +2978,9 @@
     .widget .wordmark { flex: 1 1 100%; text-align: center; }
     .widget .icon-group { flex: 1 1 100%; display: grid; grid-template-columns: repeat(5, 1fr); justify-items: center; gap: 2px; }
   }
+
+  /* Çok dar ekranlar (320-360px): deneme giriş tablosu 1px bile taşmasın */
+  @media (max-width: 360px) {
+    .exam-subject-row { grid-template-columns: minmax(54px, 1fr) 42px 42px 42px 38px; gap: 3px; }
+  }
+

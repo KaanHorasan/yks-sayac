@@ -315,7 +315,10 @@ Promise.all([loadSettings(), loadProgress(), loadTopics(), loadStudy()]).then(fu
       loadCoachQuotes();
       if (currentUserUid) {
         mergeTodayPlanIntoTopics();
-        cityReady.then(function () { startAdminGrantListener(currentUserUid); });
+        cityReady.then(function () {
+          startAdminGrantListener(currentUserUid);
+          reapplyAdminGrantsSince();   // yedekten geri yüklemeden sonra yarım kalan yönetici işlemleri varsa tamamlar
+        });
         Promise.all([cityReady, examReady]).then(function () {
           return buildStudentSummaryPayload();
         }).then(function (payload) {
