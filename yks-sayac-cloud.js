@@ -1339,11 +1339,112 @@ function wireCoachQuotesEditor(coachUid, profile) {
   });
 }
 
+var focusEditorWired = false;
+var FOCUS_DEFAULT_PROCS = ["chrome.exe", "msedge.exe", "firefox.exe", "opera.exe", "brave.exe", "discord.exe", "steam.exe", "telegram.exe", "whatsapp.exe", "spotify.exe"];
+
+function focusYtId(s) {
+  s = (s || "").trim();
+  var m = s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/);
+  if (m) return m[1];
+  return /^[\w-]{11}$/.test(s) ? s : "";
+}
+
+function focusTextToConfig() {
+  var g = function (id) { return document.getElementById(id); };
+  var cats = [], byName = {}, problems = [], domains = [], procs = [];
+  g("focusMenuInput").value.split("\n").forEach(function (line, i) {
+    line = line.trim();
+    if (!line) return;
+    var p = line.split("|").map(function (s) { return s.trim(); });
+    var n = "Satır " + (i + 1) + ": ";
+    if (p.length !== 3 || !p[0] || !p[1] || !p[2]) { problems.push(n + "Kategori | Başlık | adres biçiminde yaz."); return; }
+    var isYtUrl = /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be|youtube-nocookie\.com)(\/|$)/i.test(p[2]);
+    var yt = (isYtUrl || /^[\w-]{11}$/.test(p[2])) ? focusYtId(p[2]) : "";
+    var item;
+    if (yt) item = { title: p[1], youtubeId: yt };
+    else if (isYtUrl) { problems.push(n + "YouTube için tek bir video bağlantısı kullan."); return; }
+    else if (/^https:\/\/\S+$/i.test(p[2])) item = { title: p[1], url: p[2] };
+    else { problems.push(n + "Adres https:// ile başlamalı."); return; }
+    if (!byName[p[0]]) { byName[p[0]] = { category: p[0], items: [] }; cats.push(byName[p[0]]); }
+    byName[p[0]].items.push(item);
+  });
+  g("focusDomainsInput").value.split("\n").forEach(function (l) {
+    var d = l.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
+    if (!d) return;
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) problems.push("Geçersiz alan adı: " + l.trim());
+    else if (domains.indexOf(d) < 0) domains.push(d);
+  });
+  g("focusProcsInput").value.split("\n").forEach(function (l) {
+    var p = l.trim().toLowerCase();
+    if (!p) return;
+    if (!/\.exe$/.test(p)) p += ".exe";
+    if (!/^[\w.\- ]+\.exe$/.test(p)) problems.push("Geçersiz program adı: " + l.trim());
+    else if (procs.indexOf(p) < 0) procs.push(p);
+  });
+  var mins = [];
+  g("focusMinsInput").value.split(",").map(Number).forEach(function (m) {
+    if (m >= 1 && m <= 600 && Math.floor(m) === m && mins.indexOf(m) < 0) mins.push(m);
+  });
+  mins.sort(function (a, b) { return a - b; });
+  if (!mins.length) mins = [45, 90, 120];
+  return { cfg: { menu: cats, extraDomains: domains, blockedProcesses: procs, sessionMinutes: mins }, problems: problems };
+}
+
+function focusFillEditor(cfg) {
+  var g = function (id) { return document.getElementById(id); };
+  var lines = [];
+  (cfg.menu || []).forEach(function (c) {
+    (c.items || []).forEach(function (it) {
+      lines.push(c.category + " | " + it.title + " | " + (it.youtubeId ? "https://www.youtube.com/watch?v=" + it.youtubeId : it.url));
+    });
+  });
+  g("focusMenuInput").value = lines.join("\n");
+  g("focusDomainsInput").value = (cfg.extraDomains || []).join("\n");
+  g("focusProcsInput").value = (cfg.blockedProcesses || []).join("\n");
+  g("focusMinsInput").value = (cfg.sessionMinutes || []).join(", ");
+}
+
+function wireCoachFocusEditor(coachUid) {
+  var saveBtn = document.getElementById("focusSaveBtn");
+  var note = document.getElementById("focusNote");
+  if (!saveBtn) return;
+  var ref = fbDb.collection("focusConfigs").doc(coachUid);
+  focusFillEditor({ blockedProcesses: FOCUS_DEFAULT_PROCS, sessionMinutes: [45, 90, 120] });
+  ref.get().then(function (snap) {
+    if (!snap.exists) return;
+    var cfg;
+    try { cfg = JSON.parse(snap.data().json); } catch (e) { return; }
+    focusFillEditor(cfg);
+  }).catch(function () {});
+  if (focusEditorWired) return;
+  focusEditorWired = true;
+  saveBtn.addEventListener("click", function () {
+    var res = focusTextToConfig();
+    if (res.problems.length) {
+      note.textContent = res.problems.slice(0, 3).join(" ");
+      note.style.color = "var(--danger)";
+      return;
+    }
+    saveBtn.disabled = true;
+    note.textContent = "";
+    ref.set({ json: JSON.stringify(res.cfg), updatedAt: Date.now() }).then(function () {
+      note.textContent = "Kaydedildi ✓ (öğrencilerin tarayıcısı bir sonraki açılışta yeni listeyi alır)";
+      note.style.color = "var(--sage)";
+    }).catch(function (err) {
+      note.textContent = "Kaydedilemedi: " + ((err && err.message) || "bilinmeyen hata");
+      note.style.color = "var(--danger)";
+    }).then(function () {
+      saveBtn.disabled = false;
+    });
+  });
+}
+
 function renderCoachDashboard(coachUid, profile) {
   var codeEl = document.getElementById("coachInviteCode");
   if (codeEl) codeEl.textContent = profile.inviteCode || "—";
   wireCoachRangeTabs();
   wireCoachQuotesEditor(coachUid, profile);
+  wireCoachFocusEditor(coachUid);
 
   fetchCoachStudents(coachUid).then(function (students) {
     students.sort(function (a, b) { return (b.meta.lastActive || 0) - (a.meta.lastActive || 0); });
