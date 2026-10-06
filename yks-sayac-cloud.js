@@ -1890,6 +1890,7 @@ var adminGrantUnsub = null;
 
 function startAdminGrantListener(uid) {
   if (adminGrantUnsub || !uid) return;
+  applyBrowserSessions(uid);
   try {
     adminGrantUnsub = fbDb.collection("studentData").doc(uid).collection("adminGrants")
       .where("applied", "==", false)

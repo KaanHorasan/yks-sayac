@@ -192,6 +192,58 @@ function reapplyAdminGrantsSince() {
   adminGrantChain = run.then(function () { return true; }, function () { return true; });
   return run;
 }
+// ---- Masaüstü çalışma tarayıcısı seanslarını çalışma süresine ve altına işle (v2.5) ----
+// studentData/{uid}/focusSessions belgeleri okunur; her biri bir kez işlenir (kimlikler yerelde tutulur).
+// Süre "Genel" dersine eklenir, altın odak moduyla aynı formülle (1.5x) verilir. Kötüye kullanıma karşı:
+// bir seans planlanan süreyi aşamaz ve bir günde en fazla 10 saat tarayıcı süresi işlenir.
+var BROWSER_APPLIED_KEY = "focus-browser-applied";
+var BROWSER_DAILY_CAP_SECONDS = 10 * 3600;
+function applyBrowserSessions(uid) {
+  if (!uid || typeof fbDb === "undefined" || !fbDb) return;
+  adminGrantChain = adminGrantChain.then(function () {
+    return fbDb.collection("studentData").doc(uid).collection("focusSessions")
+      .where("startedAtMs", ">=", Date.now() - 14 * 86400000).get().then(function (snap) {
+        return storageGet(BROWSER_APPLIED_KEY).then(function (raw) {
+          var st = { ids: [], days: {} };
+          try { var p = JSON.parse(raw); if (p && Array.isArray(p.ids)) st = { ids: p.ids, days: p.days || {} }; } catch (e) {}
+          var list = [];
+          snap.forEach(function (d) { if (st.ids.indexOf(d.id) < 0) list.push({ id: d.id, s: d.data() || {} }); });
+          list.sort(function (a, b) { return a.s.startedAtMs - b.s.startedAtMs; });
+          var totalSecs = 0, totalCoins = 0, chain = Promise.resolve();
+          list.forEach(function (item) {
+            chain = chain.then(function () {
+              var s = item.s, started = Number(s.startedAtMs);
+              st.ids.push(item.id);
+              if (!isFinite(started)) return;
+              var date = dateStr(new Date(started));
+              var used = Number(st.days[date]) || 0;
+              var mins = Math.min(Number(s.minutes) || 0, Number(s.plannedMinutes) || 0);
+              var secs = Math.max(0, Math.min(Math.floor(mins * 60), BROWSER_DAILY_CAP_SECONDS - used));
+              if (secs <= 0) return;
+              var coins = roundCoins(computeFocusReward(secs * 1000) * FOCUS_REWARD_MULTIPLIER);
+              st.days[date] = used + secs;
+              totalSecs += secs;
+              totalCoins += coins;
+              return doApplyAdminGrant({ type: "study", seconds: secs, date: date, subject: "Genel" }, true).then(function () {
+                if (coins > 0) return doApplyAdminGrant({ type: "coins", amount: coins }, true);
+              });
+            });
+          });
+          return chain.then(function () {
+            if (st.ids.length > 500) st.ids = st.ids.slice(-500);
+            return storageSet(BROWSER_APPLIED_KEY, JSON.stringify(st));
+          }).then(function () {
+            if (totalSecs > 0) {
+              showUpdateToast("🖥️ Çalışma tarayıcısından " + adminDurationText(totalSecs) + " çalışma ve " + roundCoins(totalCoins) + " altın eklendi.");
+              scheduleAdminSummarySync();
+            }
+          });
+        });
+      });
+  }).catch(function () { /* çevrimdışı ya da kurallar yayınlanmamışsa sessizce geç; bir sonraki açılışta tekrar denenir */ });
+  adminGrantChain = adminGrantChain.then(function () { return true; }, function () { return true; });
+}
+
 function buildStudentSummaryPayload() {
   var recs = (examState && examState.records) || [];
   var bestTYT = 0, bestAYT = 0;
