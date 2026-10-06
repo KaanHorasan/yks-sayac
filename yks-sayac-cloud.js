@@ -1419,6 +1419,84 @@ function focusFillEditor(cfg) {
   g("focusDomainsInput").value = (cfg.extraDomains || []).join("\n");
   g("focusProcsInput").value = (cfg.blockedProcesses || []).join("\n");
   g("focusMinsInput").value = (cfg.sessionMinutes || []).join(", ");
+  focusRenderPreview();
+}
+
+function focusFetchTitle(id) {
+  var url = "https://www.youtube.com/oembed?format=json&url=" + encodeURIComponent("https://www.youtube.com/watch?v=" + id);
+  var ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  var timer = ctl ? setTimeout(function () { ctl.abort(); }, 5000) : null;
+  return fetch(url, ctl ? { signal: ctl.signal } : {})
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) { return (j && j.title) ? String(j.title).replace(/\|/g, "/").trim() : ""; })
+    .catch(function () { return ""; })
+    .then(function (t) { if (timer) clearTimeout(timer); return t; });
+}
+
+function focusRenderPreview() {
+  var box = document.getElementById("focusPreview");
+  var dl = document.getElementById("focusCatList");
+  if (!box) return;
+  box.innerHTML = "";
+  var cats = [];
+  document.getElementById("focusMenuInput").value.split("\n").forEach(function (line) {
+    var p = line.split("|").map(function (s) { return s.trim(); });
+    if (p.length !== 3) return;
+    if (p[0] && cats.indexOf(p[0]) < 0) cats.push(p[0]);
+    var id = /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//i.test(p[2]) ? focusYtId(p[2]) : "";
+    if (!id) return;
+    var d = document.createElement("div");
+    d.className = "focus-thumb";
+    var img = document.createElement("img");
+    img.loading = "lazy";
+    img.alt = "";
+    img.src = "https://i.ytimg.com/vi/" + id + "/mqdefault.jpg";
+    var sp = document.createElement("span");
+    sp.textContent = p[1];
+    d.appendChild(img);
+    d.appendChild(sp);
+    box.appendChild(d);
+  });
+  if (dl) {
+    dl.innerHTML = "";
+    cats.forEach(function (c) { var o = document.createElement("option"); o.value = c; dl.appendChild(o); });
+  }
+}
+
+function focusQuickAdd() {
+  var g = function (id) { return document.getElementById(id); };
+  var note = g("focusQuickNote");
+  var cat = g("focusQuickCat").value.trim().replace(/\|/g, "/");
+  var ta = g("focusMenuInput");
+  var ids = [];
+  g("focusQuickLinks").value.split("\n").forEach(function (l) {
+    l = l.trim();
+    if (!l) return;
+    var id = focusYtId(l);
+    if (id && ids.indexOf(id) < 0 && ta.value.indexOf(id) < 0) ids.push(id);
+  });
+  if (!cat) { note.textContent = "Önce bir kategori yaz."; note.style.color = "var(--danger)"; return; }
+  if (!ids.length) { note.textContent = "Yeni bir YouTube bağlantısı bulunamadı (zaten listede olabilir)."; note.style.color = "var(--danger)"; return; }
+  var btn = g("focusQuickAdd");
+  btn.disabled = true;
+  note.style.color = "";
+  note.textContent = "Başlıklar bulunuyor…";
+  Promise.all(ids.map(function (id) {
+    return focusFetchTitle(id).then(function (t) { return { id: id, title: t }; });
+  })).then(function (res) {
+    var missing = 0;
+    var lines = res.map(function (r) {
+      if (!r.title) missing++;
+      return cat + " | " + (r.title || "Video") + " | https://www.youtube.com/watch?v=" + r.id;
+    });
+    ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, "") + "\n" : "") + lines.join("\n");
+    g("focusQuickLinks").value = "";
+    focusRenderPreview();
+    note.textContent = res.length + " video eklendi. " +
+      (missing ? missing + " videonun başlığı bulunamadı, listede 'Video' yazan satırları düzenle. " : "") +
+      "Kaydet'e basmayı unutma.";
+    btn.disabled = false;
+  });
 }
 
 function wireCoachFocusEditor(coachUid) {
@@ -1435,6 +1513,8 @@ function wireCoachFocusEditor(coachUid) {
   }).catch(function () {});
   if (focusEditorWired) return;
   focusEditorWired = true;
+  document.getElementById("focusQuickAdd").addEventListener("click", focusQuickAdd);
+  document.getElementById("focusMenuInput").addEventListener("input", focusRenderPreview);
   saveBtn.addEventListener("click", function () {
     var res = focusTextToConfig();
     if (res.problems.length) {

@@ -585,7 +585,23 @@
     <div class="dash-card">
       <div class="panel-title" style="margin-bottom: 8px;">çalışma tarayıcısı listesi</div>
       <p class="settings-note" style="margin: 0 0 8px;">Öğrencilerinin masaüstü çalışma tarayıcısında açılabilecek siteler ve videolar. Her satıra bir öğe yaz: <b>Kategori | Başlık | https adresi ya da YouTube video bağlantısı</b></p>
+      <style>
+        .focus-preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .focus-thumb { width: 112px; font: 10px "IBM Plex Mono", monospace; color: var(--ink-dim); }
+        .focus-thumb img { width: 112px; height: 63px; object-fit: cover; border-radius: 6px; border: 1px solid var(--rule); display: block; }
+        .focus-thumb span { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      </style>
+      <p class="settings-note" style="margin: 0 0 4px;"><b>Hızlı video ekle:</b> bir ya da birden fazla YouTube bağlantısını yapıştır (her satıra bir tane), kategoriyi yaz ve "Ekle"ye bas. Başlıklar otomatik bulunur.</p>
+      <textarea id="focusQuickLinks" class="coach-quotes-textarea" rows="3" placeholder="https://www.youtube.com/watch?v=..."></textarea>
+      <div style="display: flex; gap: 8px; margin-top: 6px;">
+        <input id="focusQuickCat" type="text" class="coach-quotes-textarea" list="focusCatList" placeholder="Kategori (örn. Matematik)">
+        <datalist id="focusCatList"></datalist>
+        <button type="button" class="save-btn" id="focusQuickAdd" style="width: auto; padding: 6px 16px;">Ekle</button>
+      </div>
+      <p class="settings-note" id="focusQuickNote" style="margin: 4px 0 10px;"></p>
+      <p class="settings-note" style="margin: 0 0 4px;">Tüm liste (başlıkları buradan düzenleyebilir, satır silebilirsin):</p>
       <textarea id="focusMenuInput" class="coach-quotes-textarea" rows="8" placeholder="Matematik | Khan Academy | https://www.khanacademy.org/&#10;Matematik | Limit konu anlatımı | https://www.youtube.com/watch?v=VIDEO_KODU"></textarea>
+      <div id="focusPreview" class="focus-preview"></div>
       <p class="settings-note" style="margin: 10px 0 4px;">Ek alan adları (giriş sayfaları vb.), her satıra bir tane:</p>
       <textarea id="focusDomainsInput" class="coach-quotes-textarea" rows="2"></textarea>
       <p class="settings-note" style="margin: 10px 0 4px;">Seans sırasında otomatik kapatılacak programlar (örn. discord.exe), her satıra bir tane:</p>
