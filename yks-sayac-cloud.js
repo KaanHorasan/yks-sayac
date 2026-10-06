@@ -1373,8 +1373,10 @@ function focusTextToConfig() {
     line = line.trim();
     if (!line) return;
     var p = line.split("|").map(function (s) { return s.trim(); });
+    var topic = "";
+    if (p.length === 4) { topic = p[1]; p = [p[0], p[2], p[3]]; }
     var n = "Satır " + (i + 1) + ": ";
-    if (p.length !== 3 || !p[0] || !p[1] || !p[2]) { problems.push(n + "Kategori | Başlık | adres biçiminde yaz."); return; }
+    if (p.length !== 3 || !p[0] || !p[1] || !p[2]) { problems.push(n + "Ders | Konu | Başlık | adres biçiminde yaz (konu isteğe bağlı)."); return; }
     var isYtUrl = /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be|youtube-nocookie\.com)(\/|$)/i.test(p[2]);
     var yt = (isYtUrl || /^[\w-]{11}$/.test(p[2])) ? focusYtId(p[2]) : "";
     var item;
@@ -1383,6 +1385,7 @@ function focusTextToConfig() {
     else if (/^https:\/\/\S+$/i.test(p[2])) item = { title: p[1], url: p[2] };
     else { problems.push(n + "Adres https:// ile başlamalı."); return; }
     if (!byName[p[0]]) { byName[p[0]] = { category: p[0], items: [] }; cats.push(byName[p[0]]); }
+    if (topic) item.topic = topic;
     byName[p[0]].items.push(item);
   });
   g("focusDomainsInput").value.split("\n").forEach(function (l) {
@@ -1412,7 +1415,7 @@ function focusFillEditor(cfg) {
   var lines = [];
   (cfg.menu || []).forEach(function (c) {
     (c.items || []).forEach(function (it) {
-      lines.push(c.category + " | " + it.title + " | " + (it.youtubeId ? "https://www.youtube.com/watch?v=" + it.youtubeId : it.url));
+      lines.push(c.category + " | " + (it.topic ? it.topic + " | " : "") + it.title + " | " + (it.youtubeId ? "https://www.youtube.com/watch?v=" + it.youtubeId : it.url));
     });
   });
   g("focusMenuInput").value = lines.join("\n");
@@ -1433,16 +1436,33 @@ function focusFetchTitle(id) {
     .then(function (t) { if (timer) clearTimeout(timer); return t; });
 }
 
+var focusTopicsByCat = {};
+function focusRefreshTopicList() {
+  var dl = document.getElementById("focusTopicList");
+  var c = document.getElementById("focusQuickCat");
+  if (!dl || !c) return;
+  dl.innerHTML = "";
+  (focusTopicsByCat[c.value.trim()] || []).forEach(function (t) {
+    var o = document.createElement("option");
+    o.value = t;
+    dl.appendChild(o);
+  });
+}
+
 function focusRenderPreview() {
   var box = document.getElementById("focusPreview");
   var dl = document.getElementById("focusCatList");
   if (!box) return;
   box.innerHTML = "";
   var cats = [];
+  var topics = {};
   document.getElementById("focusMenuInput").value.split("\n").forEach(function (line) {
     var p = line.split("|").map(function (s) { return s.trim(); });
+    var topic = "";
+    if (p.length === 4) { topic = p[1]; p = [p[0], p[2], p[3]]; }
     if (p.length !== 3) return;
     if (p[0] && cats.indexOf(p[0]) < 0) cats.push(p[0]);
+    if (topic) { topics[p[0]] = topics[p[0]] || []; if (topics[p[0]].indexOf(topic) < 0) topics[p[0]].push(topic); }
     var id = /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//i.test(p[2]) ? focusYtId(p[2]) : "";
     if (!id) return;
     var d = document.createElement("div");
@@ -1452,7 +1472,7 @@ function focusRenderPreview() {
     img.alt = "";
     img.src = "https://i.ytimg.com/vi/" + id + "/mqdefault.jpg";
     var sp = document.createElement("span");
-    sp.textContent = p[1];
+    sp.textContent = (topic ? topic + " · " : "") + p[1];
     d.appendChild(img);
     d.appendChild(sp);
     box.appendChild(d);
@@ -1461,12 +1481,15 @@ function focusRenderPreview() {
     dl.innerHTML = "";
     cats.forEach(function (c) { var o = document.createElement("option"); o.value = c; dl.appendChild(o); });
   }
+  focusTopicsByCat = topics;
+  focusRefreshTopicList();
 }
 
 function focusQuickAdd() {
   var g = function (id) { return document.getElementById(id); };
   var note = g("focusQuickNote");
   var cat = g("focusQuickCat").value.trim().replace(/\|/g, "/");
+  var topic = g("focusQuickTopic").value.trim().replace(/\|/g, "/");
   var ta = g("focusMenuInput");
   var ids = [];
   g("focusQuickLinks").value.split("\n").forEach(function (l) {
@@ -1475,7 +1498,7 @@ function focusQuickAdd() {
     var id = focusYtId(l);
     if (id && ids.indexOf(id) < 0 && ta.value.indexOf(id) < 0) ids.push(id);
   });
-  if (!cat) { note.textContent = "Önce bir kategori yaz."; note.style.color = "var(--danger)"; return; }
+  if (!cat) { note.textContent = "Önce dersi yaz."; note.style.color = "var(--danger)"; return; }
   if (!ids.length) { note.textContent = "Yeni bir YouTube bağlantısı bulunamadı (zaten listede olabilir)."; note.style.color = "var(--danger)"; return; }
   var btn = g("focusQuickAdd");
   btn.disabled = true;
@@ -1487,7 +1510,7 @@ function focusQuickAdd() {
     var missing = 0;
     var lines = res.map(function (r) {
       if (!r.title) missing++;
-      return cat + " | " + (r.title || "Video") + " | https://www.youtube.com/watch?v=" + r.id;
+      return cat + " | " + (topic ? topic + " | " : "") + (r.title || "Video") + " | https://www.youtube.com/watch?v=" + r.id;
     });
     ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, "") + "\n" : "") + lines.join("\n");
     g("focusQuickLinks").value = "";
@@ -1515,6 +1538,7 @@ function wireCoachFocusEditor(coachUid) {
   focusEditorWired = true;
   document.getElementById("focusQuickAdd").addEventListener("click", focusQuickAdd);
   document.getElementById("focusMenuInput").addEventListener("input", focusRenderPreview);
+  document.getElementById("focusQuickCat").addEventListener("input", focusRefreshTopicList);
   saveBtn.addEventListener("click", function () {
     var res = focusTextToConfig();
     if (res.problems.length) {
