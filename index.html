@@ -590,20 +590,25 @@
         .focus-thumb { width: 112px; font: 10px "IBM Plex Mono", monospace; color: var(--ink-dim); }
         .focus-thumb img { width: 112px; height: 63px; object-fit: cover; border-radius: 6px; border: 1px solid var(--rule); display: block; }
         .focus-thumb span { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .focus-thumb { position: relative; }
+        .focus-thumb-x { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; padding: 0; line-height: 16px; font-size: 10px; border: none; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; }
+        .focus-thumb-site { width: 112px; height: 63px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px dashed var(--rule); font-size: 18px; }
+        .focus-tree-ders { border: 1px dashed var(--rule); border-radius: 10px; padding: 6px 10px; margin-top: 6px; }
+        .focus-tree-ders > summary { cursor: pointer; font: 12px "IBM Plex Mono", monospace; color: var(--amber); }
+        .focus-tree-konu-title { font: 11px "IBM Plex Mono", monospace; color: var(--ink-dim); margin: 10px 0 2px; }
       </style>
-      <p class="settings-note" style="margin: 0 0 4px;"><b>Hızlı video ekle:</b> bir ya da birden fazla YouTube bağlantısını yapıştır (her satıra bir tane), dersi ve konuyu yaz, "Ekle"ye bas. Başlıklar otomatik bulunur.</p>
+      <p class="settings-note" style="margin: 0 0 4px;"><b>Hızlı video ekle:</b> bir ya da birden fazla YouTube bağlantısını yapıştır (her satıra bir tane), müfredat listesinden dersi ve konuyu seç (konu seçmezsen video dersin genel bölümüne eklenir) ve "+ Ekle"ye bas. Başlıklar otomatik bulunur.</p>
       <textarea id="focusQuickLinks" class="coach-quotes-textarea" rows="3" placeholder="https://www.youtube.com/watch?v=..."></textarea>
-      <div style="display: flex; gap: 8px; margin-top: 6px;">
-        <input id="focusQuickCat" type="text" class="coach-quotes-textarea" list="focusCatList" placeholder="Ders (örn. Matematik)">
-        <datalist id="focusCatList"></datalist>
-        <input id="focusQuickTopic" type="text" class="coach-quotes-textarea" list="focusTopicList" placeholder="Konu (örn. PKOB)">
-        <datalist id="focusTopicList"></datalist>
-        <button type="button" class="save-btn" id="focusQuickAdd" style="width: auto; padding: 6px 16px;">Ekle</button>
+      <div class="coach-plan-picker" style="border-bottom: none; margin-top: 6px;">
+        <select id="focusQuickExam" class="coach-plan-picker-examtype"><option value="TYT">TYT</option><option value="AYT">AYT</option></select>
+        <select id="focusQuickDers" class="coach-plan-picker-subject"></select>
+        <select id="focusQuickKonu" class="coach-plan-picker-topic"></select>
+        <button type="button" class="coach-plan-picker-add" id="focusQuickAdd">+ Ekle</button>
       </div>
       <p class="settings-note" id="focusQuickNote" style="margin: 4px 0 10px;"></p>
       <p class="settings-note" style="margin: 0 0 4px;">Tüm liste (başlıkları buradan düzenleyebilir, satır silebilirsin):</p>
       <textarea id="focusMenuInput" class="coach-quotes-textarea" rows="8" placeholder="Matematik | PKOB | Permütasyon giriş | https://www.youtube.com/watch?v=VIDEO_KODU&#10;Matematik | Khan Academy | https://www.khanacademy.org/"></textarea>
-      <div id="focusPreview" class="focus-preview"></div>
+      <div id="focusPreview"></div>
       <p class="settings-note" style="margin: 10px 0 4px;">Ek alan adları (giriş sayfaları vb.), her satıra bir tane:</p>
       <textarea id="focusDomainsInput" class="coach-quotes-textarea" rows="2"></textarea>
       <p class="settings-note" style="margin: 10px 0 4px;">Seans sırasında otomatik kapatılacak programlar (örn. discord.exe), her satıra bir tane:</p>

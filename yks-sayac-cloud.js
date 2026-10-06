@@ -1407,6 +1407,22 @@ function focusTextToConfig() {
   });
   mins.sort(function (a, b) { return a - b; });
   if (!mins.length) mins = [45, 90, 120];
+  var dersOrder = Object.keys(YKS_TOPICS.TYT).concat(Object.keys(YKS_TOPICS.AYT).filter(function (d) { return !YKS_TOPICS.TYT[d]; }));
+  var topicIdx = function (ders, t) {
+    var i = (YKS_TOPICS.TYT[ders] || []).concat(YKS_TOPICS.AYT[ders] || []).indexOf(t);
+    return i < 0 ? 1000000 : i;
+  };
+  cats.forEach(function (c) {
+    c.items = c.items.map(function (it, n) { return { it: it, n: n }; }).sort(function (a, b) {
+      var ta = a.it.topic ? topicIdx(c.category, a.it.topic) : -1;
+      var tb = b.it.topic ? topicIdx(c.category, b.it.topic) : -1;
+      return (ta - tb) || (a.n - b.n);
+    }).map(function (x) { return x.it; });
+  });
+  cats.sort(function (a, b) {
+    var ia = dersOrder.indexOf(a.category), ib = dersOrder.indexOf(b.category);
+    return (ia < 0 ? 1000000 : ia) - (ib < 0 ? 1000000 : ib);
+  });
   return { cfg: { menu: cats, extraDomains: domains, blockedProcesses: procs, sessionMinutes: mins }, problems: problems };
 }
 
@@ -1436,60 +1452,119 @@ function focusFetchTitle(id) {
     .then(function (t) { if (timer) clearTimeout(timer); return t; });
 }
 
-var focusTopicsByCat = {};
-function focusRefreshTopicList() {
-  var dl = document.getElementById("focusTopicList");
-  var c = document.getElementById("focusQuickCat");
-  if (!dl || !c) return;
-  dl.innerHTML = "";
-  (focusTopicsByCat[c.value.trim()] || []).forEach(function (t) {
+var focusOpenKey = "";
+
+function focusPopulateDers() {
+  var exam = document.getElementById("focusQuickExam").value;
+  var sel = document.getElementById("focusQuickDers");
+  sel.innerHTML = "";
+  Object.keys(YKS_TOPICS[exam] || {}).forEach(function (name) {
+    var o = document.createElement("option");
+    o.value = name;
+    o.textContent = name;
+    sel.appendChild(o);
+  });
+  focusPopulateKonu();
+}
+
+function focusPopulateKonu() {
+  var exam = document.getElementById("focusQuickExam").value;
+  var ders = document.getElementById("focusQuickDers").value;
+  var sel = document.getElementById("focusQuickKonu");
+  sel.innerHTML = "";
+  var first = document.createElement("option");
+  first.value = "";
+  first.textContent = "konu seç (isteğe bağlı)";
+  sel.appendChild(first);
+  ((YKS_TOPICS[exam] || {})[ders] || []).forEach(function (t) {
     var o = document.createElement("option");
     o.value = t;
-    dl.appendChild(o);
+    o.textContent = t;
+    sel.appendChild(o);
   });
 }
 
+// Liste: Ders > Konu > videolar (açılır ağaç). Her videonun köşesindeki ✕ satırı listeden çıkarır.
 function focusRenderPreview() {
   var box = document.getElementById("focusPreview");
-  var dl = document.getElementById("focusCatList");
   if (!box) return;
+  var ta = document.getElementById("focusMenuInput");
+  var open = {};
+  Array.prototype.forEach.call(box.querySelectorAll("details[data-key]"), function (d) { open[d.getAttribute("data-key")] = d.open; });
   box.innerHTML = "";
-  var cats = [];
-  var topics = {};
-  document.getElementById("focusMenuInput").value.split("\n").forEach(function (line) {
+  var tree = [], byDers = {};
+  ta.value.split("\n").forEach(function (line, li) {
     var p = line.split("|").map(function (s) { return s.trim(); });
     var topic = "";
     if (p.length === 4) { topic = p[1]; p = [p[0], p[2], p[3]]; }
-    if (p.length !== 3) return;
-    if (p[0] && cats.indexOf(p[0]) < 0) cats.push(p[0]);
-    if (topic) { topics[p[0]] = topics[p[0]] || []; if (topics[p[0]].indexOf(topic) < 0) topics[p[0]].push(topic); }
+    if (p.length !== 3 || !p[0]) return;
     var id = /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be)\//i.test(p[2]) ? focusYtId(p[2]) : "";
-    if (!id) return;
-    var d = document.createElement("div");
-    d.className = "focus-thumb";
-    var img = document.createElement("img");
-    img.loading = "lazy";
-    img.alt = "";
-    img.src = "https://i.ytimg.com/vi/" + id + "/mqdefault.jpg";
-    var sp = document.createElement("span");
-    sp.textContent = (topic ? topic + " · " : "") + p[1];
-    d.appendChild(img);
-    d.appendChild(sp);
-    box.appendChild(d);
+    var d = byDers[p[0]];
+    if (!d) { d = byDers[p[0]] = { name: p[0], topics: {}, order: [], count: 0 }; tree.push(d); }
+    if (!d.topics[topic]) { d.topics[topic] = []; d.order.push(topic); }
+    d.topics[topic].push({ title: p[1], id: id, line: li });
+    d.count++;
   });
-  if (dl) {
-    dl.innerHTML = "";
-    cats.forEach(function (c) { var o = document.createElement("option"); o.value = c; dl.appendChild(o); });
-  }
-  focusTopicsByCat = topics;
-  focusRefreshTopicList();
+  tree.forEach(function (d) {
+    var det = document.createElement("details");
+    det.className = "focus-tree-ders";
+    det.setAttribute("data-key", d.name);
+    det.open = open.hasOwnProperty(d.name) ? open[d.name] : d.name === focusOpenKey;
+    var sum = document.createElement("summary");
+    sum.textContent = d.name + " (" + d.count + ")";
+    det.appendChild(sum);
+    d.order.forEach(function (tk) {
+      var kd = document.createElement("div");
+      var title = document.createElement("div");
+      title.className = "focus-tree-konu-title";
+      title.textContent = (tk || "Konusuz") + " (" + d.topics[tk].length + ")";
+      kd.appendChild(title);
+      var row = document.createElement("div");
+      row.className = "focus-preview";
+      d.topics[tk].forEach(function (v) {
+        var t = document.createElement("div");
+        t.className = "focus-thumb";
+        if (v.id) {
+          var img = document.createElement("img");
+          img.loading = "lazy";
+          img.alt = "";
+          img.src = "https://i.ytimg.com/vi/" + v.id + "/mqdefault.jpg";
+          t.appendChild(img);
+        } else {
+          var st = document.createElement("div");
+          st.className = "focus-thumb-site";
+          st.textContent = "🌐";
+          t.appendChild(st);
+        }
+        var sp = document.createElement("span");
+        sp.textContent = v.title;
+        t.appendChild(sp);
+        var x = document.createElement("button");
+        x.type = "button";
+        x.className = "focus-thumb-x";
+        x.textContent = "✕";
+        x.title = "Listeden çıkar";
+        x.addEventListener("click", function () {
+          var ls = ta.value.split("\n");
+          ls.splice(v.line, 1);
+          ta.value = ls.join("\n");
+          focusRenderPreview();
+        });
+        t.appendChild(x);
+        row.appendChild(t);
+      });
+      kd.appendChild(row);
+      det.appendChild(kd);
+    });
+    box.appendChild(det);
+  });
 }
 
 function focusQuickAdd() {
   var g = function (id) { return document.getElementById(id); };
   var note = g("focusQuickNote");
-  var cat = g("focusQuickCat").value.trim().replace(/\|/g, "/");
-  var topic = g("focusQuickTopic").value.trim().replace(/\|/g, "/");
+  var cat = g("focusQuickDers").value;
+  var topic = g("focusQuickKonu").value;
   var ta = g("focusMenuInput");
   var ids = [];
   g("focusQuickLinks").value.split("\n").forEach(function (l) {
@@ -1514,6 +1589,7 @@ function focusQuickAdd() {
     });
     ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, "") + "\n" : "") + lines.join("\n");
     g("focusQuickLinks").value = "";
+    focusOpenKey = cat;
     focusRenderPreview();
     note.textContent = res.length + " video eklendi. " +
       (missing ? missing + " videonun başlığı bulunamadı, listede 'Video' yazan satırları düzenle. " : "") +
@@ -1538,7 +1614,9 @@ function wireCoachFocusEditor(coachUid) {
   focusEditorWired = true;
   document.getElementById("focusQuickAdd").addEventListener("click", focusQuickAdd);
   document.getElementById("focusMenuInput").addEventListener("input", focusRenderPreview);
-  document.getElementById("focusQuickCat").addEventListener("input", focusRefreshTopicList);
+  document.getElementById("focusQuickExam").addEventListener("change", focusPopulateDers);
+  document.getElementById("focusQuickDers").addEventListener("change", focusPopulateKonu);
+  focusPopulateDers();
   saveBtn.addEventListener("click", function () {
     var res = focusTextToConfig();
     if (res.problems.length) {
