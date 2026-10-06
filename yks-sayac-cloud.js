@@ -976,6 +976,20 @@ function renderPlanTable(tbodyEl, emptyEl, days) {
   if (emptyEl) emptyEl.style.display = html ? "none" : "block";
 }
 
+// Masaüstü çalışma tarayıcısında son 7 günde tamamlanan seansların toplam süresi
+function loadCoachBrowserMinutes(studentUid, card) {
+  var el = card.querySelector(".coach-browser-stat b");
+  if (!el) return;
+  fbDb.collection("studentData").doc(studentUid).collection("focusSessions")
+    .where("startedAtMs", ">=", Date.now() - 7 * 86400000).get()
+    .then(function (snap) {
+      var t = 0;
+      snap.forEach(function (d) { t += Number(d.data().minutes) || 0; });
+      el.textContent = t >= 60 ? Math.floor(t / 60) + " sa " + (t % 60) + " dk" : t + " dk";
+    })
+    .catch(function () { el.textContent = "—"; });
+}
+
 function renderCoachStudentList() {
   var list = document.getElementById("coachStudentList");
   var empty = document.getElementById("coachStudentsEmpty");
@@ -1003,6 +1017,7 @@ function renderCoachStudentList() {
       '<div class="coach-student-stat"><b>' + safeNum(m.bestAYT).toFixed(1) + '</b><span>en iyi AYT net</span></div>' +
       '<div class="coach-student-stat"><b>' + safeNum(m.cityPopulation) + '</b><span>şehir nüfusu</span></div>' +
       '<div class="coach-student-stat"><b>' + safeNum(focusStats.weekCompleted) + '/' + safeNum(focusStats.weekTotal) + '</b><span>odak seansı (7g)</span></div>' +
+      '<div class="coach-student-stat coach-browser-stat"><b>…</b><span>tarayıcıda çalışma (7g)</span></div>' +
       '</div>' +
       '<div class="coach-subject-section">' +
       '<div class="coach-subject-title">' + rangeLabel() + ' · konu dağılımı</div>' +
@@ -1042,6 +1057,8 @@ function renderCoachStudentList() {
         : '') +
       '<div class="coach-plan-editor" style="display:none;">' + buildPlanEditorHtml(s.plan) + '</div>' +
       '</div>';
+
+    loadCoachBrowserMinutes(s.uid, card);
 
     var toggleBtn = card.querySelector(".coach-exam-toggle");
     var examListEl = card.querySelector(".coach-exam-list");
