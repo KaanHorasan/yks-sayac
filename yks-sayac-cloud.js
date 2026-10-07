@@ -1405,10 +1405,12 @@ function focusTextToConfig() {
     var n = "Satır " + (i + 1) + ": ";
     if (p.length !== 3 || !p[0] || !p[1] || !p[2]) { problems.push(n + "Ders | Konu | Başlık | adres biçiminde yaz (konu isteğe bağlı)."); return; }
     var isYtUrl = /^https:\/\/(www\.|m\.)?(youtube\.com|youtu\.be|youtube-nocookie\.com)(\/|$)/i.test(p[2]);
+    var plm = isYtUrl ? p[2].match(/^https:\/\/(?:www\.|m\.)?youtube\.com\/playlist\?(?:[^#\s]*&)?list=([\w-]{10,80})/i) : null;
     var yt = (isYtUrl || /^[\w-]{11}$/.test(p[2])) ? focusYtId(p[2]) : "";
     var item;
-    if (yt) item = { title: p[1], youtubeId: yt };
-    else if (isYtUrl) { problems.push(n + "YouTube için tek bir video bağlantısı kullan."); return; }
+    if (plm) { item = { title: p[1], playlistId: plm[1] }; if (yt) item.youtubeId = yt; }
+    else if (yt) item = { title: p[1], youtubeId: yt };
+    else if (isYtUrl) { problems.push(n + "YouTube için tek bir video ya da oynatma listesi (youtube.com/playlist?list=...) bağlantısı kullan."); return; }
     else if (/^https:\/\/\S+$/i.test(p[2])) item = { title: p[1], url: p[2] };
     else { problems.push(n + "Adres https:// ile başlamalı."); return; }
     if (!byName[p[0]]) { byName[p[0]] = { category: p[0], items: [] }; cats.push(byName[p[0]]); }
@@ -1458,7 +1460,7 @@ function focusFillEditor(cfg) {
   var lines = [];
   (cfg.menu || []).forEach(function (c) {
     (c.items || []).forEach(function (it) {
-      lines.push(c.category + " | " + (it.topic ? it.topic + " | " : "") + it.title + " | " + (it.youtubeId ? "https://www.youtube.com/watch?v=" + it.youtubeId : it.url));
+      lines.push(c.category + " | " + (it.topic ? it.topic + " | " : "") + it.title + " | " + (it.playlistId ? "https://www.youtube.com/playlist?list=" + it.playlistId + (it.youtubeId ? "&v=" + it.youtubeId : "") : (it.youtubeId ? "https://www.youtube.com/watch?v=" + it.youtubeId : it.url)));
     });
   });
   g("focusMenuInput").value = lines.join("\n");
@@ -1529,7 +1531,7 @@ function focusRenderPreview() {
     var d = byDers[p[0]];
     if (!d) { d = byDers[p[0]] = { name: p[0], topics: {}, order: [], count: 0 }; tree.push(d); }
     if (!d.topics[topic]) { d.topics[topic] = []; d.order.push(topic); }
-    d.topics[topic].push({ title: p[1], id: id, line: li });
+    d.topics[topic].push({ title: p[1], id: id, line: li, list: /youtube\.com\/playlist\?/i.test(p[2]) });
     d.count++;
   });
   tree.forEach(function (d) {
@@ -1560,7 +1562,7 @@ function focusRenderPreview() {
         } else {
           var st = document.createElement("div");
           st.className = "focus-thumb-site";
-          st.textContent = "🌐";
+          st.textContent = v.list ? "📃" : "🌐";
           t.appendChild(st);
         }
         var sp = document.createElement("span");
@@ -1587,39 +1589,63 @@ function focusRenderPreview() {
   });
 }
 
+function focusFetchPlaylistMeta(listId) {
+  var url = "https://www.youtube.com/oembed?format=json&url=" + encodeURIComponent("https://www.youtube.com/playlist?list=" + listId);
+  var ctl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  var timer = ctl ? setTimeout(function () { ctl.abort(); }, 5000) : null;
+  return fetch(url, ctl ? { signal: ctl.signal } : {})
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      if (!j) return { title: "", thumb: "" };
+      var m = String(j.thumbnail_url || "").match(/\/vi\/([\w-]{11})\//);
+      return { title: String(j.title || "").replace(/\|/g, "/").trim(), thumb: m ? m[1] : "" };
+    })
+    .catch(function () { return { title: "", thumb: "" }; })
+    .then(function (x) { if (timer) clearTimeout(timer); return x; });
+}
+
 function focusQuickAdd() {
   var g = function (id) { return document.getElementById(id); };
   var note = g("focusQuickNote");
   var cat = g("focusQuickDers").value;
   var topic = g("focusQuickKonu").value;
   var ta = g("focusMenuInput");
-  var ids = [];
+  var entries = [], seen = {};
   g("focusQuickLinks").value.split("\n").forEach(function (l) {
     l = l.trim();
     if (!l) return;
-    var id = focusYtId(l);
-    if (id && ids.indexOf(id) < 0 && ta.value.indexOf(id) < 0) ids.push(id);
+    var pm = l.match(/youtube\.com\/playlist\?(?:[^#\s]*&)?list=([\w-]{10,80})/i);
+    var e = null;
+    if (pm) e = { type: "list", id: pm[1] };
+    else { var id = focusYtId(l); if (id) e = { type: "video", id: id }; }
+    if (!e || seen[e.id] || ta.value.indexOf(e.id) >= 0) return;
+    seen[e.id] = true;
+    entries.push(e);
   });
-  if (!cat) { note.textContent = "Önce dersi yaz."; note.style.color = "var(--danger)"; return; }
-  if (!ids.length) { note.textContent = "Yeni bir YouTube bağlantısı bulunamadı (zaten listede olabilir)."; note.style.color = "var(--danger)"; return; }
+  if (!entries.length) { note.textContent = "Yeni bir YouTube bağlantısı bulunamadı (zaten listede olabilir)."; note.style.color = "var(--danger)"; return; }
   var btn = g("focusQuickAdd");
   btn.disabled = true;
   note.style.color = "";
   note.textContent = "Başlıklar bulunuyor…";
-  Promise.all(ids.map(function (id) {
-    return focusFetchTitle(id).then(function (t) { return { id: id, title: t }; });
+  Promise.all(entries.map(function (e) {
+    if (e.type === "list") return focusFetchPlaylistMeta(e.id).then(function (m) { return { e: e, title: m.title, thumb: m.thumb }; });
+    return focusFetchTitle(e.id).then(function (t) { return { e: e, title: t, thumb: "" }; });
   })).then(function (res) {
     var missing = 0;
     var lines = res.map(function (r) {
       if (!r.title) missing++;
-      return cat + " | " + (topic ? topic + " | " : "") + (r.title || "Video") + " | https://www.youtube.com/watch?v=" + r.id;
+      var isList = r.e.type === "list";
+      var link = isList
+        ? "https://www.youtube.com/playlist?list=" + r.e.id + (r.thumb ? "&v=" + r.thumb : "")
+        : "https://www.youtube.com/watch?v=" + r.e.id;
+      return cat + " | " + (topic ? topic + " | " : "") + (r.title || (isList ? "Oynatma listesi" : "Video")) + " | " + link;
     });
     ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, "") + "\n" : "") + lines.join("\n");
     g("focusQuickLinks").value = "";
     focusOpenKey = cat;
     focusRenderPreview();
-    note.textContent = res.length + " video eklendi. " +
-      (missing ? missing + " videonun başlığı bulunamadı, listede 'Video' yazan satırları düzenle. " : "") +
+    note.textContent = res.length + " öğe eklendi. " +
+      (missing ? missing + " öğenin başlığı bulunamadı, listede 'Video' ya da 'Oynatma listesi' yazan satırları düzenle. " : "") +
       "Kaydet'e basmayı unutma.";
     btn.disabled = false;
   });
