@@ -29,13 +29,14 @@ var YKS_TOPICS = {
     "Matematik": [
       "Temel Kavramlar", "Sayı Basamakları", "Bölme ve Bölünebilme", "OBEB-OKEK",
       "Rasyonel Sayılar", "Basit Eşitsizlikler", "Mutlak Değer", "Üslü Sayılar",
-      "Köklü Sayılar", "Çarpanlara Ayırma", "Oran-Orantı", "Denklem Çözme",
-      "Problemler", "Kümeler", "Fonksiyonlar (Temel)", "Permütasyon-Kombinasyon-Olasılık (Temel)",
+      "Köklü Sayılar", "Çarpanlara Ayırma", "Oran-Orantı", "Denklem Çözme", "Problemler",
+      "Kümeler", "Fonksiyonlar (Temel)", "Permütasyon-Kombinasyon-Olasılık (Temel)",
       "İstatistik (Temel)"
     ],
     "Geometri": [
       "Doğruda ve Üçgende Açı", "Üçgende Alan-Kenar Bağıntıları", "Özel Üçgenler",
-      "Açıortay-Kenarortay", "Çokgenler", "Dörtgenler", "Çember ve Daire", "Katı Cisimler (Temel)"
+      "Açıortay-Kenarortay", "Üçgenlerde Benzerlik", "Çokgenler", "Dörtgenler",
+      "Çember ve Daire", "Katı Cisimler (Temel)", "Analitik Geometri (Temel)"
     ],
     "Fizik": [
       "Fizik Bilimine Giriş", "Madde ve Özellikleri", "Basınç", "Kaldırma Kuvveti",
@@ -48,15 +49,16 @@ var YKS_TOPICS = {
       "Kimyasal Tepkimeler", "Karışımlar", "Asit-Baz-Tuz", "Kimya Her Yerde"
     ],
     "Biyoloji": [
-      "Canlıların Ortak Özellikleri", "Hücre", "Canlıların Sınıflandırılması",
-      "Hücre Bölünmeleri (Mitoz-Mayoz)", "Kalıtım (Temel)", "Ekosistem Ekolojisi",
-      "Bitki Biyolojisi (Temel)"
+      "Canlıların Ortak Özellikleri", "Canlıların Temel Bileşenleri", "Hücre",
+      "Hücre Zarından Madde Geçişi", "Canlıların Sınıflandırılması",
+      "Hücre Bölünmeleri (Mitoz-Mayoz)", "Eşeyli ve Eşeysiz Üreme", "Kalıtım (Temel)",
+      "Ekosistem Ekolojisi", "Bitki Biyolojisi (Temel)"
     ],
     "Tarih": [
-      "Tarih Bilimi ve Yöntemi", "İlk ve Orta Çağlarda Türk Dünyası", "İslamiyet ve Türkler",
-      "Beylikten Devlete (Osmanlı Kuruluş)", "Dünya Gücü Osmanlı", "Osmanlı Kültür ve Medeniyeti",
-      "Arayış Yılları (17-18.yy)", "Devrimler Çağında Osmanlı", "20.yy Başı Osmanlı",
-      "I. Dünya Savaşı", "Milli Mücadele"
+      "Tarih Bilimi ve Yöntemi", "İlk ve Orta Çağlarda Türk Dünyası",
+      "İslamiyet ve Türkler", "Beylikten Devlete (Osmanlı Kuruluş)", "Dünya Gücü Osmanlı",
+      "Osmanlı Kültür ve Medeniyeti", "Arayış Yılları (17-18.yy)",
+      "Devrimler Çağında Osmanlı", "20.yy Başı Osmanlı", "I. Dünya Savaşı", "Milli Mücadele"
     ],
     "Coğrafya": [
       "Doğa ve İnsan", "Dünya'nın Şekli ve Hareketleri", "Coğrafi Konum", "İklim Bilgisi",
@@ -65,65 +67,90 @@ var YKS_TOPICS = {
     ],
     "Felsefe": [
       "Felsefenin Alanı", "Bilgi Felsefesi", "Varlık Felsefesi", "Din-Kültür-Felsefe",
-      "Ahlak Felsefesi", "Sanat Felsefesi", "Din Felsefesi", "Siyaset Felsefesi", "Bilim Felsefesi"
+      "Ahlak Felsefesi", "Sanat Felsefesi", "Din Felsefesi", "Siyaset Felsefesi",
+      "Bilim Felsefesi"
     ],
     "Din Kültürü": [
-      "Bilgi ve İnanç", "İslam ve İbadet", "Din ve Hayat", "Anadolu'da İslam", "İslam ve Bilim"
+      "Bilgi ve İnanç", "İslam ve İbadet", "Din ve Hayat", "Anadolu'da İslam",
+      "İslam ve Bilim"
     ]
   },
   AYT: {
     "Matematik": [
-      "Polinomlar", "2. Dereceden Denklemler", "Permütasyon-Kombinasyon-Olasılık",
-      "İstatistik", "Trigonometri", "Logaritma", "Diziler", "Limit ve Süreklilik",
-      "Türev", "İntegral", "Karmaşık Sayılar"
+      "Fonksiyonlar", "Polinomlar", "2. Dereceden Denklemler", "Parabol", "Eşitsizlikler",
+      "Karmaşık Sayılar", "Permütasyon-Kombinasyon-Olasılık", "Binom", "İstatistik",
+      "Trigonometri", "Logaritma", "Diziler", "Limit ve Süreklilik", "Türev",
+      "Türev Uygulamaları", "İntegral", "Belirli İntegral ve Alan"
     ],
     "Geometri": [
-      "Analitik Geometri", "Vektörler", "Katı Cisimler (İleri)", "Çokgenler (İleri)",
-      "Trigonometri (Geometri)"
+      "Doğruda ve Üçgende Açılar", "Üçgenler", "Çokgenler (İleri)", "Dörtgenler",
+      "Çember ve Daire", "Trigonometri (Geometri)", "Vektörler", "Analitik Geometri",
+      "Çemberin Analitiği", "Dönüşümlerle Geometri", "Uzay Geometrisi",
+      "Katı Cisimler (İleri)"
     ],
     "Fizik": [
-      "Vektörler ve Kuvvet", "Tork ve Denge", "Basit Makineler", "İtme-Momentum",
-      "Elektrik Alan", "Manyetik Alan", "Alternatif Akım", "Çift Yarık Deneyi",
-      "Modern Fizik", "Atom Fiziği"
+      "Vektörler ve Kuvvet", "Bağıl Hareket", "Newton'un Hareket Yasaları",
+      "Bir Boyutta Sabit İvmeli Hareket", "İki Boyutta Hareket (Atışlar)",
+      "Enerji ve Hareket", "İtme-Momentum", "Tork ve Denge", "Basit Makineler",
+      "Elektrik Alan", "Elektriksel Potansiyel", "Düzgün Elektrik Alan ve Sığa",
+      "Manyetik Alan", "Elektromanyetik İndüksiyon", "Alternatif Akım", "Transformatörler",
+      "Düzgün Çembersel Hareket", "Dönerek Öteleme ve Açısal Momentum",
+      "Kütle Çekim ve Kepler Yasaları", "Basit Harmonik Hareket", "Dalga Mekaniği",
+      "Çift Yarık Deneyi", "Atom Fiziği", "Radyoaktivite", "Modern Fizik",
+      "Modern Fiziğin Teknolojideki Uygulamaları"
     ],
     "Kimya": [
-      "Kimyasal Hesaplamalar (İleri)", "Gazlar", "Sıvı Çözeltiler",
-      "Kimyasal Tepkimelerde Enerji", "Tepkime Hızı", "Kimyasal Denge",
-      "Asit-Baz Dengesi", "Elektrokimya", "Organik Kimya", "Enerji Kaynakları"
+      "Modern Atom Teorisi", "Gazlar", "Kimyasal Hesaplamalar (İleri)", "Sıvı Çözeltiler",
+      "Çözünürlük Dengesi", "Kimyasal Tepkimelerde Enerji", "Tepkime Hızı",
+      "Kimyasal Denge", "Asit-Baz Dengesi", "Elektrokimya", "Karbon Kimyasına Giriş",
+      "Organik Kimya", "Enerji Kaynakları"
     ],
     "Biyoloji": [
       "Sinir Sistemi", "Endokrin Sistem", "Duyu Organları", "Destek ve Hareket Sistemi",
       "Sindirim Sistemi", "Dolaşım ve Bağışıklık", "Solunum Sistemi", "Üriner Sistem",
-      "Üreme Sistemi ve Gelişme", "Bitki Biyolojisi (İleri)", "Canlılarda Enerji Dönüşümleri",
-      "Komünite ve Popülasyon Ekolojisi"
+      "Üreme Sistemi ve Gelişme", "Kalıtım (İleri)", "Nükleik Asitler", "Protein Sentezi",
+      "Biyoteknoloji ve Gen Mühendisliği", "Canlılarda Enerji Dönüşümleri",
+      "Fotosentez ve Kemosentez", "Oksijenli ve Oksijensiz Solunum",
+      "Bitki Biyolojisi (İleri)", "Komünite ve Popülasyon Ekolojisi"
     ],
     "Türk Dili ve Edebiyatı": [
-      "Edebiyat Bilgi ve Kuramları", "Divan Edebiyatı", "Halk Edebiyatı", "Tanzimat Edebiyatı",
-      "Servet-i Fünun Edebiyatı", "Fecr-i Ati", "Milli Edebiyat", "Cumhuriyet Dönemi Şiir",
-      "Cumhuriyet Dönemi Roman/Hikaye", "Cumhuriyet Dönemi Tiyatro", "Dünya Edebiyatından Örnekler"
+      "Anlam Bilgisi", "Şiir Bilgisi", "Düzyazı Türleri", "Edebiyat Bilgi ve Kuramları",
+      "İslamiyet Öncesi Türk Edebiyatı", "Divan Edebiyatı", "Halk Edebiyatı",
+      "Edebî Akımlar", "Tanzimat Edebiyatı", "Servet-i Fünun Edebiyatı", "Fecr-i Ati",
+      "Milli Edebiyat", "Cumhuriyet Dönemi Şiir", "Cumhuriyet Dönemi Roman/Hikaye",
+      "Cumhuriyet Dönemi Tiyatro", "Çağdaş Türk Edebiyatı", "Dünya Edebiyatından Örnekler"
     ],
     "Tarih-1": [
-      "Tarih ve Çağ Açımı", "İlk Türk Devletleri", "Türk-İslam Devletleri", "Beylikten Devlete",
-      "Dünya Gücü Osmanlı", "Osmanlı Kültür ve Medeniyeti", "Arayış Yılları",
-      "Milli Mücadele", "Türk İnkılabı"
+      "Tarih ve Çağ Açımı", "İlk Uygarlıklar", "İlk Türk Devletleri",
+      "İslam Tarihi ve Uygarlığı", "Türk-İslam Devletleri", "Orta Çağ ve Yeni Çağda Avrupa",
+      "Beylikten Devlete", "Dünya Gücü Osmanlı", "Osmanlı Kültür ve Medeniyeti",
+      "Arayış Yılları", "En Uzun Yüzyıl (1800-1922)", "Milli Mücadele",
+      "Kurtuluş Savaşı ve Antlaşmalar", "TBMM Dönemi", "Türk İnkılabı"
     ],
     "Tarih-2": [
-      "Atatürkçülük ve Dış Politika", "II. Dünya Savaşı", "Soğuk Savaş Dönemi",
-      "Yumuşama Dönemi", "Küreselleşen Dünya", "Türkiye'de Toplumsal ve Ekonomik Gelişmeler"
+      "Atatürkçülük ve Dış Politika", "Türk Dış Politikası", "20. Yüzyıl Başlarında Dünya",
+      "II. Dünya Savaşı", "Soğuk Savaş Dönemi", "Yumuşama Dönemi", "Küreselleşen Dünya",
+      "Türkiye'de Toplumsal ve Ekonomik Gelişmeler"
     ],
     "Coğrafya-1": [
-      "Ekosistem", "Nüfus Politikaları", "Şehirleşme", "Türkiye'de Tarım-Sanayi-Ticaret", "Göç Süreçleri"
+      "Ekosistem", "Madde Döngüleri", "Nüfus Politikaları", "Şehirleşme",
+      "Türkiye'de Tarım-Sanayi-Ticaret", "Göç Süreçleri"
     ],
     "Coğrafya-2": [
-      "Bölgeler", "Ulaşım ve Ticaret", "Çevre ve Toplum", "Küresel Ortam", "Doğal Sistemler"
+      "Beşeri Sistemler", "Bölgeler", "Bölgesel Kalkınma Projeleri", "Ulaşım ve Ticaret",
+      "Çevre ve Toplum", "Küresel Ortam", "Ülkeler Coğrafyası", "Doğal Sistemler",
+      "Doğal Afetler"
     ],
     "Felsefe Grubu": [
-      "Psikolojiye Giriş", "Öğrenme-Bellek-Düşünme", "Ruh Sağlığı", "Sosyolojiye Giriş",
-      "Toplumsal Yapı", "Toplumsal Değişme", "Mantığa Giriş", "Klasik Mantık", "Sembolik Mantık"
+      "Psikolojiye Giriş", "Psikolojinin Temel Süreçleri", "Öğrenme-Bellek-Düşünme",
+      "Ruh Sağlığı", "Sosyolojiye Giriş", "Birey ve Toplum", "Toplumsal Yapı",
+      "Toplumsal Değişme", "Kültür", "Toplumsal Kurumlar", "Mantığa Giriş", "Klasik Mantık",
+      "Mantık ve Dil", "Sembolik Mantık"
     ],
     "Din Kültürü": [
-      "İslam Düşüncesinde İtikadi Yorumlar", "İslam ve Bilim", "İslam ve Sanat",
-      "Yahudilik ve Hristiyanlık", "Hint ve Çin Dinleri"
+      "Hz. Muhammed (SAV)", "Kuran-ı Kerim ve Akıl", "İslam Düşüncesinde İtikadi Yorumlar",
+      "İslam Düşüncesinde Tasavvufi Yorumlar", "İslam ve Bilim", "İslam ve Sanat",
+      "Yahudilik ve Hristiyanlık", "Hint ve Çin Dinleri", "Güncel Dini Meseleler"
     ]
   }
 };
