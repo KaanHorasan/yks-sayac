@@ -1010,8 +1010,20 @@ function loadCoachBrowserMinutes(studentUid, card) {
   fbDb.collection("studentData").doc(studentUid).collection("focusSessions")
     .where("startedAtMs", ">=", Date.now() - 7 * 86400000).get()
     .then(function (snap) {
-      var t = 0;
-      snap.forEach(function (d) { t += Number(d.data().minutes) || 0; });
+      var t = 0, top = {};
+      snap.forEach(function (d) {
+        var x = d.data();
+        t += Number(x.minutes) || 0;
+        try {
+          JSON.parse(x.breakdown || "[]").forEach(function (b) {
+            var k = (b.d || "") + (b.k ? " › " + b.k : "");
+            if (k) top[k] = (top[k] || 0) + (Number(b.s) || 0);
+          });
+        } catch (e) {}
+      });
+      var names = Object.keys(top).sort(function (a, b) { return top[b] - top[a]; }).slice(0, 3)
+        .map(function (k) { return k + " (" + Math.round(top[k] / 60) + " dk)"; });
+      if (names.length && el.parentNode) el.parentNode.title = "En çok izlenen: " + names.join(", ");
       el.textContent = t >= 60 ? Math.floor(t / 60) + " sa " + (t % 60) + " dk" : t + " dk";
     })
     .catch(function () { el.textContent = "—"; });
@@ -1436,6 +1448,11 @@ function focusTextToConfig() {
   });
   mins.sort(function (a, b) { return a - b; });
   if (!mins.length) mins = [45, 90, 120];
+  var bc = parseInt(g("focusBreakCount").value, 10), bm = parseInt(g("focusBreakMins").value, 10);
+  if (isNaN(bc)) bc = 2;
+  if (isNaN(bm)) bm = 5;
+  bc = Math.max(0, Math.min(10, bc));
+  bm = Math.max(1, Math.min(30, bm));
   var dersOrder = Object.keys(YKS_TOPICS.TYT).concat(Object.keys(YKS_TOPICS.AYT).filter(function (d) { return !YKS_TOPICS.TYT[d]; }));
   var topicIdx = function (ders, t) {
     var i = (YKS_TOPICS.TYT[ders] || []).concat(YKS_TOPICS.AYT[ders] || []).indexOf(t);
@@ -1452,7 +1469,7 @@ function focusTextToConfig() {
     var ia = dersOrder.indexOf(a.category), ib = dersOrder.indexOf(b.category);
     return (ia < 0 ? 1000000 : ia) - (ib < 0 ? 1000000 : ib);
   });
-  return { cfg: { menu: cats, extraDomains: domains, blockedProcesses: procs, sessionMinutes: mins }, problems: problems };
+  return { cfg: { menu: cats, extraDomains: domains, blockedProcesses: procs, sessionMinutes: mins, breakCount: bc, breakMinutes: bm }, problems: problems };
 }
 
 function focusFillEditor(cfg) {
@@ -1467,6 +1484,8 @@ function focusFillEditor(cfg) {
   g("focusDomainsInput").value = (cfg.extraDomains || []).join("\n");
   g("focusProcsInput").value = (cfg.blockedProcesses || []).join("\n");
   g("focusMinsInput").value = (cfg.sessionMinutes || []).join(", ");
+  g("focusBreakCount").value = (cfg.breakCount != null) ? cfg.breakCount : 2;
+  g("focusBreakMins").value = cfg.breakMinutes || 5;
   focusRenderPreview();
 }
 

@@ -1,6 +1,6 @@
 // YKS Sayaç Service Worker — ağ öncelikli, çevrimdışıyken önbellek.
 // Sürüm numarası ve dosya listesi her yayında yayın betiği tarafından doldurulur (aşağıdaki iki satır).
-var VERSION = "3.0.0";
+var VERSION = "3.1.0";
 var CACHE = "yks-sayac-" + VERSION;
 var FILES = [
   "./",

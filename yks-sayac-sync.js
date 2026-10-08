@@ -198,6 +198,29 @@ function reapplyAdminGrantsSince() {
 // bir seans planlanan süreyi aşamaz ve bir günde en fazla 10 saat tarayıcı süresi işlenir.
 var BROWSER_APPLIED_KEY = "focus-browser-applied";
 var BROWSER_DAILY_CAP_SECONDS = 10 * 3600;
+// Seansta izlenen içeriklerin ders bazlı süreleri (breakdown: [{d: ders, k: konu, s: saniye}]).
+// Toplam, işlenecek süreyi aşarsa orantılı küçültülür; kalan süre "Genel" dersine yazılır.
+function browserSessionParts(breakdownJson, secs) {
+  var byDers = {}, sum = 0;
+  try {
+    JSON.parse(breakdownJson || "[]").forEach(function (b) {
+      var s = Math.floor(Number(b && b.s));
+      var d = String((b && b.d) || "").trim().slice(0, 40);
+      if (!d || !(s > 0)) return;
+      byDers[d] = (byDers[d] || 0) + s;
+      sum += s;
+    });
+  } catch (e) { byDers = {}; sum = 0; }
+  var scale = sum > secs ? secs / sum : 1;
+  var parts = [], used = 0;
+  Object.keys(byDers).forEach(function (d) {
+    var v = Math.floor(byDers[d] * scale);
+    if (v > 0) { parts.push({ subject: d, seconds: v }); used += v; }
+  });
+  if (secs - used > 0) parts.push({ subject: "Genel", seconds: secs - used });
+  return parts;
+}
+
 function applyBrowserSessions(uid) {
   if (!uid || typeof fbDb === "undefined" || !fbDb) return;
   adminGrantChain = adminGrantChain.then(function () {
@@ -224,7 +247,14 @@ function applyBrowserSessions(uid) {
               st.days[date] = used + secs;
               totalSecs += secs;
               totalCoins += coins;
-              return doApplyAdminGrant({ type: "study", seconds: secs, date: date, subject: "Genel" }, true).then(function () {
+              var parts = browserSessionParts(s.breakdown, secs);
+              var credit = Promise.resolve();
+              parts.forEach(function (pt) {
+                credit = credit.then(function () {
+                  return doApplyAdminGrant({ type: "study", seconds: pt.seconds, date: date, subject: pt.subject }, true);
+                });
+              });
+              return credit.then(function () {
                 if (coins > 0) return doApplyAdminGrant({ type: "coins", amount: coins }, true);
               });
             });
