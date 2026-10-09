@@ -242,12 +242,14 @@ var isCity = new URLSearchParams(location.search).get("view") === "city";
 var isExam = new URLSearchParams(location.search).get("view") === "exam";
 var isCoach = ["coach", "admin"].indexOf(new URLSearchParams(location.search).get("view")) >= 0;
 var isPlan = new URLSearchParams(location.search).get("view") === "plan";
-document.getElementById("widget").style.display = (isDashboard || isNotes || isCity || isExam || isCoach || isPlan) ? "none" : "";
+var isErrors = new URLSearchParams(location.search).get("view") === "errors";
+document.getElementById("widget").style.display = (isDashboard || isNotes || isCity || isExam || isCoach || isPlan || isErrors) ? "none" : "";
 document.getElementById("dashboardView").style.display = isDashboard ? "flex" : "none";
 document.getElementById("notesView").style.display = isNotes ? "flex" : "none";
 document.getElementById("cityView").style.display = isCity ? "flex" : "none";
 document.getElementById("examView").style.display = isExam ? "flex" : "none";
 document.getElementById("planView").style.display = isPlan ? "flex" : "none";
+document.getElementById("errorsView").style.display = isErrors ? "flex" : "none";
 var notesBtn = document.getElementById("notesBtn");
 if (notesBtn) {
   notesBtn.addEventListener("click", function () {
@@ -260,6 +262,8 @@ var examBtn = document.getElementById("examBtn");
 if (examBtn) examBtn.addEventListener("click", openExamView);
 var planBtn = document.getElementById("planBtn");
 if (planBtn) planBtn.addEventListener("click", openPlanView);
+var errorsBtn = document.getElementById("errorsBtn");
+if (errorsBtn) errorsBtn.addEventListener("click", function () { openAppView("errors", "yksSayacErrors", 0.7, 900, 850); });
 Promise.all([loadSettings(), loadProgress(), loadTopics(), loadStudy()]).then(function (results) {
   todayCount = results[1] || 0;
   todayTopics = results[2] || [];
@@ -304,6 +308,9 @@ Promise.all([loadSettings(), loadProgress(), loadTopics(), loadStudy()]).then(fu
   } else if (isPlan) {
     document.title = "Haftalık Plan · YKS Sayaç";
     initPlanView();
+  } else if (isErrors) {
+    document.title = "Hata Arşivi · YKS Sayaç";
+    initMistakesView();
   } else if (isCoach) {
     document.title = (new URLSearchParams(location.search).get("view") === "admin" ? "Yönetici Paneli" : "Koç Paneli") + " · YKS Sayaç";
     wireLogoutButtons();

@@ -1004,6 +1004,13 @@ function renderPlanTable(tbodyEl, emptyEl, days) {
 }
 
 // Masaüstü çalışma tarayıcısında son 7 günde tamamlanan seansların toplam süresi
+// Öğrencinin açık hatalarında en çok geçen konular (koç kartında ipucu olarak görünür)
+function topErrorTopics(meta) {
+  var stats = (meta && meta.errorStats) || [];
+  if (!stats.length) return "Açık hata yok";
+  return "En çok hata: " + stats.slice(0, 3).map(function (x) { return x.d + " › " + x.k + " (" + x.n + ")"; }).join(", ");
+}
+
 function loadCoachBrowserMinutes(studentUid, card) {
   var el = card.querySelector(".coach-browser-stat b");
   if (!el) return;
@@ -1057,6 +1064,7 @@ function renderCoachStudentList() {
       '<div class="coach-student-stat"><b>' + safeNum(m.cityPopulation) + '</b><span>şehir nüfusu</span></div>' +
       '<div class="coach-student-stat"><b>' + safeNum(focusStats.weekCompleted) + '/' + safeNum(focusStats.weekTotal) + '</b><span>odak seansı (7g)</span></div>' +
       '<div class="coach-student-stat coach-browser-stat"><b>…</b><span>tarayıcıda çalışma (7g)</span></div>' +
+      '<div class="coach-student-stat" title="' + escapeHtml(topErrorTopics(s.meta)) + '"><b>' + safeNum((s.meta || {}).errorOpen) + '</b><span>açık hata</span></div>' +
       '</div>' +
       '<div class="coach-subject-section">' +
       '<div class="coach-subject-title">' + rangeLabel() + ' · konu dağılımı</div>' +
