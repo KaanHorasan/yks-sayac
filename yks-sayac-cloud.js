@@ -1004,6 +1004,109 @@ function renderPlanTable(tbodyEl, emptyEl, days) {
 }
 
 // Masaüstü çalışma tarayıcısında son 7 günde tamamlanan seansların toplam süresi
+// Koç paneli: öğrencinin hata arşivini aç/kapat, görselleri gör, hataya koç notu yaz
+var coachErrViewerWired = false;
+function wireCoachErrors(studentUid, card) {
+  var wrap = document.createElement("div");
+  wrap.className = "coach-errors";
+  wrap.style.marginTop = "10px";
+  var toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "backup-btn backup-btn-secondary";
+  toggle.style.width = "100%";
+  toggle.textContent = "Hata arşivini göster";
+  var box = document.createElement("div");
+  box.style.display = "none";
+  box.style.marginTop = "8px";
+  var loaded = false;
+  toggle.addEventListener("click", function () {
+    var show = box.style.display === "none";
+    box.style.display = show ? "block" : "none";
+    toggle.textContent = show ? "Hata arşivini gizle" : "Hata arşivini göster";
+    if (show && !loaded) { loaded = true; coachLoadErrors(studentUid, box); }
+  });
+  wrap.appendChild(toggle);
+  wrap.appendChild(box);
+  card.appendChild(wrap);
+  if (!coachErrViewerWired) {
+    coachErrViewerWired = true;
+    var v = document.getElementById("mistakeViewer");
+    if (v) v.addEventListener("click", function () { this.style.display = "none"; });
+  }
+}
+
+function coachLoadErrors(uid, box) {
+  box.textContent = "Yükleniyor…";
+  fbDb.collection("studentData").doc(uid).collection("errors").orderBy("createdAt", "desc").limit(100).get().then(function (snap) {
+    box.innerHTML = "";
+    if (snap.empty) { box.textContent = "Henüz hata eklenmemiş."; return; }
+    snap.forEach(function (d) {
+      var m = d.data();
+      var item = document.createElement("div");
+      item.className = "mistake-card" + (m.status === "solved" ? " solved" : "");
+      var head = document.createElement("div");
+      head.className = "mistake-head";
+      head.textContent = m.ders + " › " + m.konu;
+      var meta = document.createElement("div");
+      meta.className = "mistake-meta";
+      meta.textContent = m.exam + " · " + (MISTAKE_REASONS[m.reason] || "Diğer") + " · " + new Date(m.createdAt).toLocaleDateString("tr-TR") +
+        " · " + (m.status === "solved" ? (m.reviewStep >= 4 ? "öğrenildi" : "çözüldü") : "açık");
+      item.appendChild(head);
+      item.appendChild(meta);
+      if (m.note) {
+        var note = document.createElement("p");
+        note.className = "mistake-note-text";
+        note.textContent = m.note;
+        item.appendChild(note);
+      }
+      var row = document.createElement("div");
+      row.className = "mistake-actions";
+      var imgBtn = document.createElement("button");
+      imgBtn.type = "button";
+      imgBtn.textContent = "Görseli aç";
+      imgBtn.addEventListener("click", function () {
+        fbDb.collection("studentData").doc(uid).collection("errorImages").doc(d.id).get().then(function (im) {
+          var src = im.exists ? im.data().img : "";
+          if (!src) { showUpdateToast("Bu hata için görsel yok."); return; }
+          document.getElementById("mistakeViewerImg").src = src;
+          document.getElementById("mistakeViewer").style.display = "flex";
+        }).catch(function () { showUpdateToast("Görsel yüklenemedi."); });
+      });
+      row.appendChild(imgBtn);
+      item.appendChild(row);
+      var noteRow = document.createElement("div");
+      noteRow.className = "mistake-row";
+      noteRow.style.marginTop = "8px";
+      var input = document.createElement("input");
+      input.type = "text";
+      input.maxLength = 400;
+      input.placeholder = "Koç notu (öğrenci görür)";
+      input.value = m.coachNote || "";
+      var saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "save-btn";
+      saveBtn.style.width = "auto";
+      saveBtn.style.padding = "6px 14px";
+      saveBtn.textContent = "Notu kaydet";
+      saveBtn.addEventListener("click", function () {
+        saveBtn.disabled = true;
+        d.ref.update({ coachNote: input.value.trim().slice(0, 400) }).then(function () {
+          saveBtn.textContent = "Kaydedildi ✓";
+        }).catch(function () {
+          saveBtn.textContent = "Kaydedilemedi";
+        }).then(function () {
+          saveBtn.disabled = false;
+          setTimeout(function () { saveBtn.textContent = "Notu kaydet"; }, 2000);
+        });
+      });
+      noteRow.appendChild(input);
+      noteRow.appendChild(saveBtn);
+      item.appendChild(noteRow);
+      box.appendChild(item);
+    });
+  }).catch(function () { box.textContent = "Hatalar yüklenemedi."; });
+}
+
 // Öğrencinin açık hatalarında en çok geçen konular (koç kartında ipucu olarak görünür)
 function topErrorTopics(meta) {
   var stats = (meta && meta.errorStats) || [];
@@ -1106,6 +1209,7 @@ function renderCoachStudentList() {
       '</div>';
 
     loadCoachBrowserMinutes(s.uid, card);
+    wireCoachErrors(s.uid, card);
 
     var toggleBtn = card.querySelector(".coach-exam-toggle");
     var examListEl = card.querySelector(".coach-exam-list");

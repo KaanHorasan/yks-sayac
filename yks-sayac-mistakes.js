@@ -12,6 +12,26 @@ var mistakeList = [];
 var mistakeNewImg = "";
 var mistakeFilter = "open";
 var mistakeWired = false;
+var mistakeFilterPicked = false;
+var MISTAKE_DAY = 86400000;
+
+// Aralıklı tekrar: çözüldü işaretlenince 3 gün sonra, her başarılı tekrardan sonra 7 ve 14 gün sonra tekrar çıkar.
+function mistakeIsDue(m) { return m.status === "solved" && m.nextReview > 0 && m.nextReview <= Date.now(); }
+function mistakeReviewText(m) {
+  if (m.status !== "solved") return "";
+  if (m.reviewStep >= 4) return "Öğrenildi ✓";
+  if (!(m.nextReview > 0)) return "";
+  if (m.nextReview <= Date.now()) return "Tekrar zamanı!";
+  return "Tekrar: " + Math.ceil((m.nextReview - Date.now()) / MISTAKE_DAY) + " gün sonra";
+}
+function mistakeAfterSolved() { return { status: "solved", reviewStep: 1, nextReview: Date.now() + 3 * MISTAKE_DAY }; }
+function mistakeAfterReview(m, passed) {
+  if (!passed) return { status: "open", reviewStep: 0, nextReview: 0 };
+  var step = (m.reviewStep || 1) + 1;
+  if (step === 2) return { reviewStep: 2, nextReview: Date.now() + 7 * MISTAKE_DAY };
+  if (step === 3) return { reviewStep: 3, nextReview: Date.now() + 14 * MISTAKE_DAY };
+  return { reviewStep: 4, nextReview: 0 };
+}
 
 function mistakeEl(id) { return document.getElementById(id); }
 
@@ -96,6 +116,7 @@ function mistakeLoad() {
   mistakeCol("errors").orderBy("createdAt", "desc").get().then(function (snap) {
     mistakeList = [];
     snap.forEach(function (d) { var x = d.data(); x.id = d.id; mistakeList.push(x); });
+    if (!mistakeFilterPicked) { mistakeFilter = mistakeList.some(mistakeIsDue) ? "due" : "open"; mistakeFilterPicked = true; }
     mistakeRender();
   }).catch(function () {
     var e = mistakeEl("mistakeEmpty");
@@ -107,13 +128,17 @@ function mistakeLoad() {
 function mistakeRender() {
   var box = mistakeEl("mistakeList");
   box.innerHTML = "";
+  var dueBtn = document.querySelector('.mistake-filter[data-f="due"]');
+  if (dueBtn) dueBtn.textContent = "Tekrar (" + mistakeList.filter(mistakeIsDue).length + ")";
   Array.prototype.forEach.call(document.querySelectorAll(".mistake-filter"), function (b) {
     b.classList.toggle("active", b.getAttribute("data-f") === mistakeFilter);
   });
-  var shown = mistakeList.filter(function (m) { return mistakeFilter === "all" || m.status === mistakeFilter; });
+  var shown = mistakeList.filter(function (m) {
+    return mistakeFilter === "all" || (mistakeFilter === "due" ? mistakeIsDue(m) : m.status === mistakeFilter);
+  });
   var empty = mistakeEl("mistakeEmpty");
   empty.style.display = shown.length ? "none" : "block";
-  empty.textContent = mistakeFilter === "solved" ? "Henüz çözülmüş hata yok." : "Burada gösterilecek hata yok.";
+  empty.textContent = mistakeFilter === "due" ? "Bugün tekrar edilecek hata yok." : mistakeFilter === "solved" ? "Henüz çözülmüş hata yok." : "Burada gösterilecek hata yok.";
   shown.forEach(function (m) {
     var card = document.createElement("div");
     card.className = "mistake-card" + (m.status === "solved" ? " solved" : "");
@@ -131,6 +156,20 @@ function mistakeRender() {
       note.textContent = m.note;
       card.appendChild(note);
     }
+    if (m.coachNote) {
+      var cn = document.createElement("p");
+      cn.className = "mistake-note-text";
+      cn.style.color = "var(--amber)";
+      cn.textContent = "Koç notu: " + m.coachNote;
+      card.appendChild(cn);
+    }
+    var rv = mistakeReviewText(m);
+    if (rv) {
+      var rvEl = document.createElement("div");
+      rvEl.className = "mistake-meta";
+      rvEl.textContent = rv;
+      card.appendChild(rvEl);
+    }
     var row = document.createElement("div");
     row.className = "mistake-actions";
     function btn(label, fn) {
@@ -141,7 +180,14 @@ function mistakeRender() {
       row.appendChild(b);
     }
     btn("Görseli aç", function () { mistakeOpenImage(m.id); });
-    btn(m.status === "solved" ? "Yeniden aç" : "✓ Çözüldü", function () { mistakeSetStatus(m, m.status === "solved" ? "open" : "solved"); });
+    if (mistakeIsDue(m)) {
+      btn("Tekrar çözdüm ✓", function () { mistakeApply(m, mistakeAfterReview(m, true)); });
+      btn("Yine yapamadım", function () { mistakeApply(m, mistakeAfterReview(m, false)); });
+    } else if (m.status === "solved") {
+      btn("Yeniden aç", function () { mistakeApply(m, { status: "open", reviewStep: 0, nextReview: 0 }); });
+    } else {
+      btn("✓ Çözüldü", function () { mistakeApply(m, mistakeAfterSolved()); });
+    }
     btn("Sil", function () { mistakeDelete(m); });
     card.appendChild(row);
     box.appendChild(card);
@@ -157,9 +203,9 @@ function mistakeOpenImage(id) {
   }).catch(function () { showUpdateToast("Görsel yüklenemedi."); });
 }
 
-function mistakeSetStatus(m, status) {
-  mistakeCol("errors").doc(m.id).update({ status: status }).then(function () {
-    m.status = status;
+function mistakeApply(m, patch) {
+  mistakeCol("errors").doc(m.id).update(patch).then(function () {
+    Object.keys(patch).forEach(function (k) { m[k] = patch[k]; });
     mistakeRender();
     mistakeSyncStats();
   }).catch(function () { showUpdateToast("Güncellenemedi, tekrar dener misin?"); });
