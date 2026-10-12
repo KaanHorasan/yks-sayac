@@ -99,16 +99,22 @@ function mistakeSetImage(blob) {
 function mistakeCol(name) { return fbDb.collection("studentData").doc(mistakeUid).collection(name); }
 
 function mistakeSyncStats() {
-  var by = {}, total = 0;
+  var by = {}, total = 0, reviews = [];
+  var reasons = { bilgi: 0, dikkat: 0, sure: 0, yorum: 0, diger: 0 };
   mistakeList.forEach(function (m) {
+    if (m.status === "solved" && m.nextReview > 0) reviews.push(m.nextReview);
     if (m.status !== "open") return;
     var k = m.ders + "\u0001" + m.konu;
     by[k] = (by[k] || 0) + 1;
+    reasons[reasons.hasOwnProperty(m.reason) ? m.reason : "diger"]++;
     total++;
   });
   var stats = Object.keys(by).map(function (k) { var p = k.split("\u0001"); return { d: p[0], k: p[1], n: by[k] }; })
     .sort(function (a, b) { return b.n - a.n; }).slice(0, 40);
-  mistakeCol("info").doc("meta").set({ errorStats: stats, errorOpen: total }, { merge: true }).catch(function () {});
+  reviews.sort(function (a, b) { return a - b; });
+  mistakeCol("info").doc("meta").set({
+    errorStats: stats, errorOpen: total, errorReasons: reasons, errorReviews: reviews.slice(0, 60)
+  }, { merge: true }).catch(function () {});
 }
 
 function mistakeLoad() {
@@ -300,4 +306,34 @@ function initMistakesView() {
     mistakeUid = user.uid;
     mistakeLoad();
   });
+}
+
+// Widget başlığındaki hata arşivi simgesine tekrar zamanı gelen hata sayısını rozet olarak yazar;
+// günde bir kez de kısa bir hatırlatma bildirimi gösterir. Tek belge okur (info/meta).
+function refreshMistakeBadge(uid) {
+  var btn = document.getElementById("errorsBtn");
+  if (!btn || !uid || typeof fbDb === "undefined" || !fbDb) return;
+  fbDb.collection("studentData").doc(uid).collection("info").doc("meta").get().then(function (d) {
+    var rv = (d.exists && Array.isArray(d.data().errorReviews)) ? d.data().errorReviews : [];
+    var n = rv.filter(function (t) { return Number(t) > 0 && Number(t) <= Date.now(); }).length;
+    var badge = document.getElementById("errorsBadge");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.id = "errorsBadge";
+      badge.className = "icon-badge";
+      btn.appendChild(badge);
+    }
+    badge.textContent = n > 0 ? String(n) : "";
+    badge.style.display = n > 0 ? "flex" : "none";
+    btn.title = n > 0 ? "Hata arşivi · " + n + " tekrar zamanı" : "Hata arşivi";
+    if (n > 0) {
+      var today = new Date().toDateString();
+      try {
+        if (localStorage.getItem("yks-mistake-due-toast") !== today) {
+          localStorage.setItem("yks-mistake-due-toast", today);
+          showUpdateToast("🔁 " + n + " hata tekrar zamanı. Hata arşivine göz at.");
+        }
+      } catch (e) {}
+    }
+  }).catch(function () {});
 }

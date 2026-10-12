@@ -1004,12 +1004,136 @@ function renderPlanTable(tbodyEl, emptyEl, days) {
 }
 
 // Masaüstü çalışma tarayıcısında son 7 günde tamamlanan seansların toplam süresi
+// Konu hangi sınavda (TYT/AYT) geçiyor? Ağaçta TYT'de varsa TYT, yoksa AYT.
+function coachExamOf(ders, konu) {
+  return ((YKS_TOPICS.TYT[ders] || []).indexOf(konu) >= 0) ? "TYT" : "AYT";
+}
+
+// Hata haritasındaki bir konu için: hatası olan öğrencilere haftalık plana görev ekle, ya da konuya video ekle
+function coachTopicTaskPanel(ders, konu, students) {
+  var panel = document.createElement("div");
+  panel.style.cssText = "margin: 6px 0 10px; padding: 8px 10px; border: 1px dashed var(--rule); border-radius: 10px;";
+  var title = document.createElement("div");
+  title.className = "mistake-meta";
+  title.textContent = "Bu konuda hatası olan öğrencilere plan görevi ver:";
+  panel.appendChild(title);
+  var checks = [];
+  students.forEach(function (st) {
+    var hit = ((st.meta && st.meta.errorStats) || []).filter(function (x) { return x.d === ders && x.k === konu; })[0];
+    if (!hit) return;
+    var lab = document.createElement("label");
+    lab.style.cssText = "display: block; font-size: 13px; margin-top: 4px;";
+    var cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = true;
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(" " + (st.profile.name || st.profile.email) + " (" + hit.n + " hata)"));
+    panel.appendChild(lab);
+    checks.push({ cb: cb, uid: st.uid });
+  });
+  var row = document.createElement("div");
+  row.className = "mistake-row";
+  row.style.marginTop = "8px";
+  var day = document.createElement("select");
+  PLAN_DAYS.forEach(function (d) {
+    var o = document.createElement("option");
+    o.value = d.key;
+    o.textContent = d.label;
+    day.appendChild(o);
+  });
+  day.value = DAY_KEY_BY_JS_DAY[new Date().getDay()] || "mon";
+  var mins = document.createElement("input");
+  mins.type = "text";
+  mins.placeholder = "dk (örn. 40)";
+  mins.value = "40";
+  var qs = document.createElement("input");
+  qs.type = "text";
+  qs.placeholder = "soru (örn. 20)";
+  qs.value = "20";
+  row.appendChild(day);
+  row.appendChild(mins);
+  row.appendChild(qs);
+  panel.appendChild(row);
+  var actions = document.createElement("div");
+  actions.className = "mistake-actions";
+  var add = document.createElement("button");
+  add.type = "button";
+  add.textContent = "Plana ekle";
+  var vid = document.createElement("button");
+  vid.type = "button";
+  vid.textContent = "Bu konuya video ekle ↑";
+  var msg = document.createElement("div");
+  msg.className = "mistake-meta";
+  msg.style.marginTop = "6px";
+  add.addEventListener("click", function () {
+    var chosen = checks.filter(function (x) { return x.cb.checked; });
+    if (!chosen.length) { msg.textContent = "En az bir öğrenci seç."; return; }
+    add.disabled = true;
+    var task = {
+      examType: coachExamOf(ders, konu), subject: ders, topic: konu,
+      minutes: parseInt(mins.value, 10) || 0, questionCount: parseInt(qs.value, 10) || 0
+    };
+    Promise.all(chosen.map(function (x) { return addPlanTask(x.uid, day.value, task); })).then(function () {
+      msg.textContent = chosen.length + " öğrencinin planına eklendi. (Öğrenci kartındaki plan tablosunu görmek için paneli yenile.)";
+    }).catch(function () {
+      msg.textContent = "Eklenemedi, tekrar dener misin?";
+    }).then(function () { add.disabled = false; });
+  });
+  // Koçun video kütüphanesi kartındaki ders/konu seçimini bu konuya ayarlar
+  vid.addEventListener("click", function () {
+    var exam = document.getElementById("focusQuickExam");
+    if (!exam) { msg.textContent = "Video kartı bu sayfada bulunamadı."; return; }
+    exam.value = coachExamOf(ders, konu);
+    focusPopulateDers();
+    document.getElementById("focusQuickDers").value = ders;
+    focusPopulateKonu();
+    document.getElementById("focusQuickKonu").value = konu;
+    var links = document.getElementById("focusQuickLinks");
+    links.scrollIntoView({ behavior: "smooth", block: "center" });
+    links.focus();
+  });
+  actions.appendChild(add);
+  actions.appendChild(vid);
+  panel.appendChild(actions);
+  panel.appendChild(msg);
+  var hint = document.createElement("div");
+  hint.className = "mistake-meta";
+  hint.style.marginTop = "4px";
+  hint.textContent = "Öğrenci masaüstü uygulamada Hata arşivi > Konunun videoları ile bu konudaki videolarına ulaşır.";
+  panel.appendChild(hint);
+  return panel;
+}
+
+// Tekrar zamanı gelen hata sayısı (öğrenci tekrar tarihlerini özete yazar, burada şimdiki zamana göre sayılır)
+function coachDueCount(meta) {
+  var rv = (meta && Array.isArray(meta.errorReviews)) ? meta.errorReviews : [];
+  var now = Date.now();
+  return rv.filter(function (t) { return Number(t) > 0 && Number(t) <= now; }).length;
+}
+
+// "Açık hata nedenleri: Bilgi eksiği 4 · Dikkat hatası 2"
+function coachReasonText(meta) {
+  var r = (meta && meta.errorReasons) || {};
+  var parts = Object.keys(MISTAKE_REASONS).filter(function (k) { return Number(r[k]) > 0; })
+    .sort(function (a, b) { return Number(r[b]) - Number(r[a]); })
+    .map(function (k) { return MISTAKE_REASONS[k] + " " + Number(r[k]); });
+  return parts.length ? "Açık hata nedenleri: " + parts.join(" · ") : "";
+}
+
 // Koç paneli: öğrencinin hata arşivini aç/kapat, görselleri gör, hataya koç notu yaz
 var coachErrViewerWired = false;
-function wireCoachErrors(studentUid, card) {
+function wireCoachErrors(studentUid, card, meta) {
   var wrap = document.createElement("div");
   wrap.className = "coach-errors";
   wrap.style.marginTop = "10px";
+  var reasonText = coachReasonText(meta);
+  if (reasonText) {
+    var rs = document.createElement("div");
+    rs.className = "mistake-meta";
+    rs.style.marginBottom = "6px";
+    rs.textContent = reasonText;
+    wrap.appendChild(rs);
+  }
   var toggle = document.createElement("button");
   toggle.type = "button";
   toggle.className = "backup-btn backup-btn-secondary";
@@ -1150,6 +1274,63 @@ function renderCoachStudentList() {
     return;
   }
   if (empty) empty.style.display = "none";
+
+  // Genel hata haritası: tüm öğrencilerin açık hatalarında en çok geçen konular ve nedenler
+  var agg = {}, aggParts = {}, reasonTotals = {}, dueTotal = 0, openTotal = 0;
+  students.forEach(function (st) {
+    var sm = st.meta || {};
+    (Array.isArray(sm.errorStats) ? sm.errorStats : []).forEach(function (x) {
+      var key = x.d + " › " + x.k;
+      agg[key] = (agg[key] || 0) + (Number(x.n) || 0);
+      aggParts[key] = { d: x.d, k: x.k };
+    });
+    Object.keys(MISTAKE_REASONS).forEach(function (k) {
+      reasonTotals[k] = (reasonTotals[k] || 0) + (Number((sm.errorReasons || {})[k]) || 0);
+    });
+    openTotal += Number(sm.errorOpen) || 0;
+    dueTotal += coachDueCount(sm);
+  });
+  var topKeys = Object.keys(agg).sort(function (a, b) { return agg[b] - agg[a]; }).slice(0, 5);
+  if (topKeys.length) {
+    var map = document.createElement("div");
+    map.className = "coach-student-card";
+    var mh = document.createElement("div");
+    mh.className = "coach-student-head";
+    var mt = document.createElement("span");
+    mt.className = "coach-student-name";
+    mt.textContent = "genel hata haritası";
+    var ms = document.createElement("span");
+    ms.className = "coach-student-active";
+    ms.textContent = openTotal + " açık hata · " + dueTotal + " tekrar zamanı";
+    mh.appendChild(mt);
+    mh.appendChild(ms);
+    map.appendChild(mh);
+    topKeys.forEach(function (key) {
+      var part = aggParts[key];
+      var line = document.createElement("div");
+      line.className = "mistake-meta";
+      line.style.cursor = "pointer";
+      line.title = "Plan görevi ver ya da video ekle";
+      line.textContent = "＋ " + key + " (" + agg[key] + ")";
+      var panel = coachTopicTaskPanel(part.d, part.k, students);
+      panel.style.display = "none";
+      line.addEventListener("click", function () { panel.style.display = panel.style.display === "none" ? "block" : "none"; });
+      map.appendChild(line);
+      map.appendChild(panel);
+    });
+    var rtxt = Object.keys(MISTAKE_REASONS).filter(function (k) { return reasonTotals[k] > 0; })
+      .sort(function (a, b) { return reasonTotals[b] - reasonTotals[a]; })
+      .map(function (k) { return MISTAKE_REASONS[k] + " " + reasonTotals[k]; }).join(" · ");
+    if (rtxt) {
+      var rl = document.createElement("div");
+      rl.className = "mistake-meta";
+      rl.style.marginTop = "6px";
+      rl.textContent = "Nedenler: " + rtxt;
+      map.appendChild(rl);
+    }
+    list.appendChild(map);
+  }
+
   students.forEach(function (s) {
     var m = s.meta || {};
     var lastActiveText = m.lastActive ? timeAgoText(m.lastActive) : "hiç bağlanmadı";
@@ -1168,6 +1349,7 @@ function renderCoachStudentList() {
       '<div class="coach-student-stat"><b>' + safeNum(focusStats.weekCompleted) + '/' + safeNum(focusStats.weekTotal) + '</b><span>odak seansı (7g)</span></div>' +
       '<div class="coach-student-stat coach-browser-stat"><b>…</b><span>tarayıcıda çalışma (7g)</span></div>' +
       '<div class="coach-student-stat" title="' + escapeHtml(topErrorTopics(s.meta)) + '"><b>' + safeNum((s.meta || {}).errorOpen) + '</b><span>açık hata</span></div>' +
+      '<div class="coach-student-stat"><b>' + coachDueCount(m) + '</b><span>tekrar zamanı</span></div>' +
       '</div>' +
       '<div class="coach-subject-section">' +
       '<div class="coach-subject-title">' + rangeLabel() + ' · konu dağılımı</div>' +
@@ -1209,7 +1391,7 @@ function renderCoachStudentList() {
       '</div>';
 
     loadCoachBrowserMinutes(s.uid, card);
-    wireCoachErrors(s.uid, card);
+    wireCoachErrors(s.uid, card, s.meta);
 
     var toggleBtn = card.querySelector(".coach-exam-toggle");
     var examListEl = card.querySelector(".coach-exam-list");
@@ -2257,6 +2439,7 @@ var adminGrantUnsub = null;
 function startAdminGrantListener(uid) {
   if (adminGrantUnsub || !uid) return;
   applyBrowserSessions(uid);
+  refreshMistakeBadge(uid);
   try {
     adminGrantUnsub = fbDb.collection("studentData").doc(uid).collection("adminGrants")
       .where("applied", "==", false)
