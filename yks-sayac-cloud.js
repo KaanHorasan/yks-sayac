@@ -1004,6 +1004,64 @@ function renderPlanTable(tbodyEl, emptyEl, days) {
 }
 
 // Masaüstü çalışma tarayıcısında son 7 günde tamamlanan seansların toplam süresi
+// Koç onaylı çıkış: öğrenci seans sırasında çıkış izni ister, koç kartta onaylar ya da reddeder (canlı güncellenir)
+var coachExitUnsubs = [];
+var coachExitPending = {};
+
+function coachExitBannerUpdate() {
+  var b = document.getElementById("coachExitBanner");
+  if (!b) return;
+  var n = Object.keys(coachExitPending).filter(function (k) { return coachExitPending[k]; }).length;
+  b.style.display = n ? "block" : "none";
+  b.textContent = "⏳ " + n + " öğrenci çıkış izni bekliyor";
+}
+
+function wireCoachExit(studentUid, card, s) {
+  var box = document.createElement("div");
+  box.style.cssText = "display: none; margin: 8px 0; padding: 8px 10px; border: 1px solid var(--amber); border-radius: 10px;";
+  card.insertBefore(box, card.firstChild);
+  var ref = fbDb.collection("exitRequests").doc(studentUid);
+  var lastSeen = 0;
+  var unsub = ref.onSnapshot(function (d) {
+    var x = d.exists ? d.data() : null;
+    var pending = !!(x && x.status === "pending");
+    coachExitPending[studentUid] = pending;
+    coachExitBannerUpdate();
+    box.innerHTML = "";
+    box.style.display = pending ? "block" : "none";
+    if (!pending) return;
+    var name = (s.profile && (s.profile.name || s.profile.email)) || "Öğrenci";
+    var msg = document.createElement("div");
+    msg.style.fontSize = "13px";
+    msg.textContent = name + " çıkış izni istiyor" + (x.reason ? ": " + x.reason : "") + " · " +
+      new Date(x.requestedAt).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+    var row = document.createElement("div");
+    row.className = "mistake-actions";
+    function decide(label, status) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = label;
+      b.addEventListener("click", function () {
+        b.disabled = true;
+        ref.update({ status: status, decidedAt: Date.now() }).catch(function () {
+          showUpdateToast("Kaydedilemedi, tekrar dener misin?");
+          b.disabled = false;
+        });
+      });
+      row.appendChild(b);
+    }
+    decide("Onayla", "approved");
+    decide("Reddet", "denied");
+    box.appendChild(msg);
+    box.appendChild(row);
+    if (x.requestedAt !== lastSeen) {
+      lastSeen = x.requestedAt;
+      showUpdateToast("⏳ " + name + " çıkış izni istiyor.");
+    }
+  }, function () {});
+  coachExitUnsubs.push(unsub);
+}
+
 // Konu hangi sınavda (TYT/AYT) geçiyor? Ağaçta TYT'de varsa TYT, yoksa AYT.
 function coachExamOf(ders, konu) {
   return ((YKS_TOPICS.TYT[ders] || []).indexOf(konu) >= 0) ? "TYT" : "AYT";
@@ -1275,6 +1333,15 @@ function renderCoachStudentList() {
   }
   if (empty) empty.style.display = "none";
 
+  // Çıkış izni isteyen öğrenciler için üst uyarı (kartlardaki dinleyiciler günceller)
+  coachExitUnsubs.forEach(function (u) { try { u(); } catch (e) {} });
+  coachExitUnsubs = [];
+  coachExitPending = {};
+  var exitBanner = document.createElement("div");
+  exitBanner.id = "coachExitBanner";
+  exitBanner.style.cssText = "display: none; margin-bottom: 10px; padding: 8px 12px; border: 1px solid var(--amber); border-radius: 10px; color: var(--amber); font-size: 13px;";
+  list.appendChild(exitBanner);
+
   // Genel hata haritası: tüm öğrencilerin açık hatalarında en çok geçen konular ve nedenler
   var agg = {}, aggParts = {}, reasonTotals = {}, dueTotal = 0, openTotal = 0;
   students.forEach(function (st) {
@@ -1392,6 +1459,7 @@ function renderCoachStudentList() {
 
     loadCoachBrowserMinutes(s.uid, card);
     wireCoachErrors(s.uid, card, s.meta);
+    wireCoachExit(s.uid, card, s);
 
     var toggleBtn = card.querySelector(".coach-exam-toggle");
     var examListEl = card.querySelector(".coach-exam-list");
