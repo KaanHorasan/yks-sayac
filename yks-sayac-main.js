@@ -317,31 +317,41 @@ Promise.all([loadSettings(), loadProgress(), loadTopics(), loadStudy()]).then(fu
     initAuthGate(true);
   } else {
     window.startStudentWidgetAfterAuth = function () {
-      var cityReady = loadCity().then(function (d) { cityState = d; });
-      var examReady = loadExamRecords().then(function (d) { examState = d; });
-      tick();
-      setInterval(tick, 1000);
-      maybeAutoBackup();
-      checkForUpdate();
-      loadCoachQuotes();
-      if (currentUserUid) {
-        mergeTodayPlanIntoTopics();
-        cityReady.then(function () {
-          startAdminGrantListener(currentUserUid);
-          reapplyAdminGrantsSince();   // yedekten geri yüklemeden sonra yarım kalan yönetici işlemleri varsa tamamlar
-        });
-        Promise.all([cityReady, examReady]).then(function () {
-          return buildStudentSummaryPayload();
-        }).then(function (payload) {
-          syncStudentSummary(currentUserUid, payload);
-        });
-        setInterval(function () {
+      // Giriş durumu değişince bu işlev birden çok kez çağrılırsa sayaçlar/dinleyiciler katlanmasın
+      if (window.__studentStartedFor === currentUserUid) return;
+      window.__studentStartedFor = currentUserUid;
+      var owner = currentUserUid ? prepareSessionOwner(currentUserUid) : Promise.resolve({ fresh: false });
+      owner.then(function (st) {
+        if (st.reload) { location.reload(); return; }   // başka hesabın yerel verisi temizlendi; temiz başlangıç için yenile
+        var cityReady = loadCity().then(function (d) { cityState = d; });
+        var examReady = loadExamRecords().then(function (d) { examState = d; });
+        tick();
+        setInterval(tick, 1000);
+        checkForUpdate();
+        loadCoachQuotes();
+        // Yeni cihaz: bulutta yedek varsa geri yükleme önerilir; karar verilene kadar otomatik yedek/seans işleme/özet beklemeli
+        var decided = (st.fresh && currentUserUid) ? offerCloudRestoreIfFresh(currentUserUid) : Promise.resolve(false);
+        decided.then(function () { if (sessionReadyResolve) sessionReadyResolve(); });
+        window.yksSessionReady.then(maybeAutoBackup);
+        if (currentUserUid) {
           mergeTodayPlanIntoTopics();
-          buildStudentSummaryPayload().then(function (payload) {
+          Promise.all([cityReady, window.yksSessionReady]).then(function () {
+            startAdminGrantListener(currentUserUid);
+            reapplyAdminGrantsSince();   // yedekten geri yüklemeden sonra yarım kalan yönetici işlemleri varsa tamamlar
+          });
+          Promise.all([cityReady, examReady, window.yksSessionReady]).then(function () {
+            return buildStudentSummaryPayload();
+          }).then(function (payload) {
             syncStudentSummary(currentUserUid, payload);
           });
-        }, 180000);
-      }
+          setInterval(function () {
+            mergeTodayPlanIntoTopics();
+            window.yksSessionReady.then(function () { return buildStudentSummaryPayload(); }).then(function (payload) {
+              syncStudentSummary(currentUserUid, payload);
+            });
+          }, 180000);
+        }
+      });
     };
     fitWidgetWindow();
     wireLogoutButtons();

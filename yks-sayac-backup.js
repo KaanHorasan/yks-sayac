@@ -7,7 +7,9 @@
 // ---- Veri Yedekleme ----
 
 var BACKUP_PREFIXES = ["progress-", "topics-", "study-", "streak-celebrated-"];
-var BACKUP_SINGLE_KEYS = ["yks-settings", "notes-pages", "focus-city", "deneme-records"];
+var BACKUP_SINGLE_KEYS = ["yks-settings", "notes-pages", "focus-city", "deneme-records", "admin-grants-applied", "focus-browser-applied"];
+// Bunlar tek başına "gerçek veri" sayılmaz: yalnızca bunlardan oluşan yedek boş kabul edilir ve buluta yazılmaz
+var BACKUP_NOISE_KEYS = ["yks-settings", "admin-grants-applied", "focus-browser-applied"];
 function collectAllBackupKeys() {
   return Promise.all(BACKUP_PREFIXES.map(function (p) { return storageListKeys(p); }))
     .then(function (results) {
@@ -146,6 +148,8 @@ function saveCloudBackup(kind) {
   if (!cloudBackupAvailable()) return Promise.resolve({ ok: false, reason: "unavailable" });
   return exportBackup().then(function (payload) {
     var keyCount = Object.keys(payload.data).length;
+    var realCount = Object.keys(payload.data).filter(function (k) { return BACKUP_NOISE_KEYS.indexOf(k) < 0; }).length;
+    if (!realCount) return { ok: false, reason: "empty" };   // boş yerel veri, gerçek bulut yedeklerinin yerine geçmesin
     return gzipText(JSON.stringify(payload)).then(function (bytes) {
       var b64 = backupBytesToBase64(bytes);
       if (b64.length > CLOUD_BACKUP_MAX_CHARS) {
@@ -245,6 +249,8 @@ function cloudBackupNow() {
   return saveCloudBackup("manual").then(function (res) {
     if (res.ok) {
       showBackupStatus("✓ Buluta yedeklendi (" + res.count + " kayıt, " + res.kb + " KB).", false);
+    } else if (res.reason === "empty") {
+      showBackupStatus("Yedeklenecek veri yok (bu cihazda henüz kayıt bulunmuyor).", true);
     } else if (res.reason === "too-big") {
       showBackupStatus("Yedek bulut sınırını aşıyor (" + res.kb + " KB, sınır ~" + Math.round(CLOUD_BACKUP_MAX_CHARS / 1024) + " KB). Üstteki ⬇ ile dosyaya indir.", true);
     } else {
@@ -263,6 +269,7 @@ function maybeAutoBackup() {
           storageSet("auto-cloud-backup-last-date", todayStr);
           return;
         }
+        if (res && res.reason === "empty") return;   // yedeklenecek veri yok: ne buluta ne dosyaya yaz
         // Bulut olmadı (çevrimdışı, yedek çok büyük...): eski yönteme dön, dosya indir.
         downloadBackupFile().then(function (r) {
           if (r && r.ok) storageSet("auto-cloud-backup-last-date", todayStr);
@@ -353,7 +360,8 @@ function confirmPendingRestore() {
     if (!(sinceMs > 0)) return null;
     showBackupStatus("Yönetici işlemleri kontrol ediliyor…", false);
     // Yedekten sonra yöneticinin düştüğü/eklediği altın ve süreler geri gelmesin; çevrimdışıysa sonraki açılışta uygulanır.
-    return scheduleGrantReapply(sinceMs).then(function () {
+    // yedeğin alındığı andan önceki tarayıcı seansları yedekte zaten var: yeniden eklenmez
+    return storageSet("browser-restore-since", String(sinceMs)).then(function () { return scheduleGrantReapply(sinceMs); }).then(function () {
       return Promise.race([reapplyAdminGrantsSince(), new Promise(function (resolve) { setTimeout(resolve, 8000); })]);
     });
   }).then(function () {

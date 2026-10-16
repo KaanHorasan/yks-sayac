@@ -221,60 +221,113 @@ function browserSessionParts(breakdownJson, secs) {
   return parts;
 }
 
+function mergeMaxDays(dst, src) {
+  if (!src || typeof src !== "object") return dst;
+  Object.keys(src).forEach(function (k) { dst[k] = Math.max(Number(dst[k]) || 0, Number(src[k]) || 0); });
+  return dst;
+}
+function pruneDayTotals(days) {
+  var keys = Object.keys(days).sort().slice(-30), out = {};
+  keys.forEach(function (k) { out[k] = days[k]; });
+  return out;
+}
+// "İşlendi" kaydı hem yerelde hem Firestore'da (studentData/{uid}/info/browserApplied) tutulur; böylece yeni cihazda/oturumda
+// ya da yerel veri silindiğinde son 14 günün seansları ikinci kez eklenmez. Seans, kayıt bulutta işaretlendikten SONRA eklenir
+// (yarıda kalırsa çift sayım yerine en kötü ihtimalle bir seans eksik kalır).
 function applyBrowserSessions(uid) {
   if (!uid || typeof fbDb === "undefined" || !fbDb) return;
   adminGrantChain = adminGrantChain.then(function () {
-    return fbDb.collection("studentData").doc(uid).collection("focusSessions")
+    var userDoc = fbDb.collection("studentData").doc(uid);
+    var claimRef = userDoc.collection("info").doc("browserApplied");
+    return userDoc.collection("focusSessions")
       .where("startedAtMs", ">=", Date.now() - 14 * 86400000).get().then(function (snap) {
-        return storageGet(BROWSER_APPLIED_KEY).then(function (raw) {
-          var st = { ids: [], days: {} };
-          try { var p = JSON.parse(raw); if (p && Array.isArray(p.ids)) st = { ids: p.ids, days: p.days || {} }; } catch (e) {}
-          var list = [];
-          snap.forEach(function (d) { if (st.ids.indexOf(d.id) < 0) list.push({ id: d.id, s: d.data() || {} }); });
-          list.sort(function (a, b) { return a.s.startedAtMs - b.s.startedAtMs; });
-          var totalSecs = 0, totalCoins = 0, chain = Promise.resolve();
-          list.forEach(function (item) {
-            chain = chain.then(function () {
-              var s = item.s, started = Number(s.startedAtMs);
-              st.ids.push(item.id);
-              if (!isFinite(started)) return;
-              var date = dateStr(new Date(started));
-              var used = Number(st.days[date]) || 0;
-              var mins = Math.min(Number(s.minutes) || 0, Number(s.plannedMinutes) || 0);
-              var secs = Math.max(0, Math.min(Math.floor(mins * 60), BROWSER_DAILY_CAP_SECONDS - used));
-              if (secs <= 0) return;
-              var coins = roundCoins(computeFocusReward(secs * 1000) * FOCUS_REWARD_MULTIPLIER);
-              st.days[date] = used + secs;
-              totalSecs += secs;
-              totalCoins += coins;
-              var parts = browserSessionParts(s.breakdown, secs);
-              var credit = Promise.resolve();
-              parts.forEach(function (pt) {
-                credit = credit.then(function () {
-                  return doApplyAdminGrant({ type: "study", seconds: pt.seconds, date: date, subject: pt.subject }, true);
-                });
+        return Promise.all([storageGet(BROWSER_APPLIED_KEY), storageGet("browser-restore-since"), localDataIsFresh()]).then(function (r) {
+          var local = { ids: [], days: {} };
+          try { var p = JSON.parse(r[0]); if (p && Array.isArray(p.ids)) local = { ids: p.ids, days: p.days || {} }; } catch (e) {}
+          var since = Number(r[1]) || 0, fresh = !!r[2];
+          var sessions = [];
+          snap.forEach(function (d) { sessions.push({ id: d.id, s: d.data() || {} }); });
+          return fbDb.runTransaction(function (tx) {
+            return tx.get(claimRef).then(function (doc) {
+              var cloud = doc.exists ? (doc.data() || {}) : null;
+              var seen = {};
+              local.ids.forEach(function (id) { seen[id] = true; });
+              if (cloud && Array.isArray(cloud.ids)) cloud.ids.forEach(function (id) { seen[id] = true; });
+              var days = mergeMaxDays(mergeMaxDays({}, local.days), cloud && cloud.days);
+              var toApply = [];
+              sessions.forEach(function (it) {
+                if (seen[it.id]) return;
+                seen[it.id] = true;
+                var started = Number(it.s.startedAtMs);
+                // yeni/boş cihazda ve bulutta kayıt yokken geçmiş seanslar zaten eski cihazda/yedekte işlenmiştir;
+                // yedekten geri yükleme sonrası da yedeğin alındığı andan önceki seanslar yeniden eklenmez
+                var skip = (!cloud && fresh) || (since > 0 && isFinite(started) && started < since);
+                if (!skip) toApply.push(it);
               });
-              return credit.then(function () {
-                if (coins > 0) return doApplyAdminGrant({ type: "coins", amount: coins }, true);
-              });
+              var ids = Object.keys(seen);
+              if (ids.length > 500) ids = ids.slice(-500);
+              tx.set(claimRef, { ids: ids, days: pruneDayTotals(days), updatedAt: Date.now() });
+              return { list: toApply, ids: ids, days: days };
             });
           });
-          return chain.then(function () {
-            if (st.ids.length > 500) st.ids = st.ids.slice(-500);
-            return storageSet(BROWSER_APPLIED_KEY, JSON.stringify(st));
-          }).then(function () {
-            if (totalSecs > 0) {
-              showUpdateToast("🖥️ Çalışma tarayıcısından " + adminDurationText(totalSecs) + " çalışma ve " + roundCoins(totalCoins) + " altın eklendi.");
-              scheduleAdminSummarySync();
-            }
+        });
+      }).then(function (claim) {
+        var st = { ids: claim.ids, days: claim.days };
+        var list = claim.list;
+        list.sort(function (a, b) { return a.s.startedAtMs - b.s.startedAtMs; });
+        var totalSecs = 0, totalCoins = 0, chain = Promise.resolve();
+        list.forEach(function (item) {
+          chain = chain.then(function () {
+            var s = item.s, started = Number(s.startedAtMs);
+            if (!isFinite(started)) return;
+            var date = dateStr(new Date(started));
+            var used = Number(st.days[date]) || 0;
+            var mins = Math.min(Number(s.minutes) || 0, Number(s.plannedMinutes) || 0);
+            var secs = Math.max(0, Math.min(Math.floor(mins * 60), BROWSER_DAILY_CAP_SECONDS - used));
+            if (secs <= 0) return;
+            var coins = roundCoins(computeFocusReward(secs * 1000) * FOCUS_REWARD_MULTIPLIER);
+            st.days[date] = used + secs;
+            totalSecs += secs;
+            totalCoins += coins;
+            var parts = browserSessionParts(s.breakdown, secs);
+            var credit = Promise.resolve();
+            parts.forEach(function (pt) {
+              credit = credit.then(function () {
+                return doApplyAdminGrant({ type: "study", seconds: pt.seconds, date: date, subject: pt.subject }, true);
+              });
+            });
+            return credit.then(function () {
+              if (coins > 0) return doApplyAdminGrant({ type: "coins", amount: coins }, true);
+            });
           });
+        });
+        return chain.then(function () {
+          return storageSet(BROWSER_APPLIED_KEY, JSON.stringify({ ids: st.ids, days: st.days }));
+        }).then(function () {
+          if (list.length) {
+            // günlük toplamlar da buluta yazılır (en iyi çaba)
+            fbDb.collection("studentData").doc(uid).collection("info").doc("browserApplied")
+              .set({ days: pruneDayTotals(st.days) }, { merge: true }).catch(function () {});
+          }
+          if (totalSecs > 0) {
+            showUpdateToast("🖥️ Çalışma tarayıcısından " + adminDurationText(totalSecs) + " çalışma ve " + roundCoins(totalCoins) + " altın eklendi.");
+            scheduleAdminSummarySync();
+          }
         });
       });
   }).catch(function () { /* çevrimdışı ya da kurallar yayınlanmamışsa sessizce geç; bir sonraki açılışta tekrar denenir */ });
   adminGrantChain = adminGrantChain.then(function () { return true; }, function () { return true; });
 }
 
+// Yeni/boş cihazda sıfırlarla buluttaki özeti ezmemek için: yerel veri yoksa yalnızca ad (ve etkinlik zamanı) gönderilir.
 function buildStudentSummaryPayload() {
+  return localDataIsFresh().then(function (fresh) {
+    if (!fresh) return buildStudentSummaryPayloadFull();
+    var name = (currentUserProfile && currentUserProfile.name) || "";
+    return name ? { name: name } : {};
+  });
+}
+function buildStudentSummaryPayloadFull() {
   var recs = (examState && examState.records) || [];
   var bestTYT = 0, bestAYT = 0;
   recs.forEach(function (r) {
@@ -316,4 +369,117 @@ function buildStudentSummaryPayload() {
       obp: (typeof state.obp === "number") ? state.obp : null
     };
   });
+}
+
+
+// ============================================================================
+// Oturum sahibi ve yeni cihaz koruması (v3.7.0)
+// - Çıkış yapınca yerel veri silinmediği için başka bir hesapla girilince önceki hesabın verisi yeni hesaba karışıyordu.
+// - Yeni cihazda/tarayıcıda yerel veri boş olduğundan boş özet ve boş "otomatik yedek" buluta yazılıp gerçek yedeklerin
+//   yerine geçiyordu (7 otomatik yedek sınırıyla eskiler siliniyordu).
+// ============================================================================
+var LOCAL_OWNER_KEY = "local-owner-uid";
+var RESTORE_DISMISSED_KEY = "restore-offer-dismissed";
+// Hesaba özel yerel durum anahtarları: hesap değişince temizlenir
+var ACCOUNT_STATE_KEYS = ["admin-grants-applied", "focus-browser-applied", "grant-reapply-state", "auto-cloud-backup-last-date",
+  "auto-backup-last-date", "yks-mistake-due-toast", "browser-restore-since", RESTORE_DISMISSED_KEY];
+var sessionReadyResolve = null;
+// Yeni cihaz kararı (bulut yedeğinden geri yükle / boş başla) verilene kadar otomatik yedek ve seans işleme beklemeli
+window.yksSessionReady = new Promise(function (resolve) { sessionReadyResolve = resolve; });
+
+function storageRemove(key) {
+  if (hasCloudStorage() && window.storage.delete) return window.storage.delete(key, false).catch(function () {});
+  try { localStorage.removeItem(key); } catch (e) {}
+  return Promise.resolve();
+}
+// Yerelde gerçek kullanıcı verisi var mı? (ayar dosyası tek başına veri sayılmaz)
+function localDataIsFresh() {
+  return Promise.all([
+    storageListKeys("study-"), storageListKeys("topics-"), storageListKeys("progress-"),
+    storageGet("focus-city"), storageGet("deneme-records"), storageGet("notes-pages")
+  ]).then(function (r) {
+    return !(r[0].length || r[1].length || r[2].length || r[3] || r[4] || r[5]);
+  });
+}
+// Önceki hesabın verisini yerelde saklar (kaybolmasın), sonra temizler
+function switchLocalOwner(oldUid, newUid) {
+  return exportBackup().then(function (payload) {
+    var real = Object.keys(payload.data).length;
+    var text = JSON.stringify(payload);
+    return storageListKeys("stash-owner-").then(function (olds) {
+      return Promise.all(olds.map(storageRemove));
+    }).then(function () {
+      if (real && text.length < 1500000) return storageSet("stash-owner-" + oldUid, text);
+    });
+  }).then(function () {
+    return collectAllBackupKeys();
+  }).then(function (keys) {
+    return Promise.all(keys.concat(ACCOUNT_STATE_KEYS).map(storageRemove));
+  }).then(function () {
+    return storageSet(LOCAL_OWNER_KEY, newUid);
+  });
+}
+// { reload: true } -> hesap değişti, temizlendi, sayfa yenilenmeli; { fresh } -> bu cihazda henüz veri yok mu
+function prepareSessionOwner(uid) {
+  return storageGet(LOCAL_OWNER_KEY).then(function (owner) {
+    if (owner && owner !== uid) {
+      return switchLocalOwner(owner, uid).then(function () { return { reload: true }; });
+    }
+    return storageSet(LOCAL_OWNER_KEY, uid).then(function () {
+      return localDataIsFresh().then(function (fresh) { return { fresh: fresh }; });
+    });
+  });
+}
+function restoreCloudBackupNow(id) {
+  return cloudBackupRef("payloads").doc(String(id)).get().then(function (doc) {
+    var b64 = doc.exists ? (doc.data() || {}).payload : null;
+    if (typeof b64 !== "string") throw new Error("yedek içeriği yok");
+    return gunzipToText(backupBase64ToBytes(b64));
+  }).then(function (text) {
+    if (!stagePendingRestore(JSON.parse(text))) throw new Error("geçersiz yedek");
+    confirmPendingRestore();   // geri yükler ve sayfayı yeniler
+  });
+}
+function showRestoreOffer(best, uid, done) {
+  var ov = document.createElement("div");
+  ov.className = "admin-msg-overlay";
+  ov.id = "restoreOfferOverlay";
+  var box = document.createElement("div");
+  box.className = "admin-msg-box";
+  var title = document.createElement("div");
+  title.className = "admin-msg-title";
+  title.textContent = "☁️ Bulutta yedeğin var";
+  var text = document.createElement("p");
+  text.className = "admin-msg-text";
+  text.textContent = "Bu cihazda henüz verin yok. Hesabında " + formatCloudBackupDate(best.createdAtMs) + " tarihli bir bulut yedeği (" + best.keyCount + " kayıt) bulunuyor. Geri yüklensin mi?";
+  var yes = document.createElement("button");
+  yes.type = "button"; yes.className = "save-btn"; yes.textContent = "Geri yükle";
+  var no = document.createElement("button");
+  no.type = "button"; no.className = "save-btn"; no.style.marginLeft = "8px"; no.textContent = "Boş başla";
+  yes.addEventListener("click", function () {
+    yes.disabled = true; no.disabled = true;
+    text.textContent = "Yedek indiriliyor…";
+    restoreCloudBackupNow(best.id).catch(function () {
+      text.textContent = "Yedek geri yüklenemedi. İnternetini kontrol edip sayfayı yenile ya da Ayarlar'dan tekrar dene.";
+      no.disabled = false; no.textContent = "Boş başla";
+    });
+  });
+  no.addEventListener("click", function () {
+    storageSet(RESTORE_DISMISSED_KEY, uid).then(function () { ov.remove(); done(); });
+  });
+  box.appendChild(title); box.appendChild(text); box.appendChild(yes); box.appendChild(no);
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+}
+// Yeni cihazda bulut yedeği varsa geri yüklemeyi önerir; karar verilene (ya da öneri yoksa hemen) çözülür
+function offerCloudRestoreIfFresh(uid) {
+  return storageGet(RESTORE_DISMISSED_KEY).then(function (dismissed) {
+    if (dismissed === uid || !cloudBackupAvailable()) return false;
+    return listCloudBackups().then(function (items) {
+      var best = null;
+      items.forEach(function (it) { if (!best && it.keyCount > 1) best = it; });   // en yeni, içeriği olan yedek
+      if (!best) return false;
+      return new Promise(function (resolve) { showRestoreOffer(best, uid, resolve); });
+    });
+  }).catch(function () { return false; });
 }

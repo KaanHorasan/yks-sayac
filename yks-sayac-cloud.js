@@ -228,7 +228,7 @@ function sendPasswordReset(email) {
 }
 
 function syncStudentSummary(uid, summary) {
-  if (!uid) return Promise.resolve();
+  if (!uid || !summary) return Promise.resolve();
   summary.lastActive = Date.now();
   return fbDb.collection("studentData").doc(uid).collection("info").doc("meta")
     .set(summary, { merge: true }).catch(function () {});
