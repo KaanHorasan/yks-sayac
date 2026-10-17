@@ -124,20 +124,8 @@
 
       <div class="settings-backup">
         <div class="settings-backup-label">veri yedekleme</div>
-        <p class="settings-note">Yedekler her gün otomatik olarak hesabına (buluta) kaydedilir; son 7 otomatik ve 5 elle alınan yedek tutulur. Yalnızca sen görebilirsin, koçun göremez. Giriş yapmadıysan ya da bulut çalışmazsa dosya olarak indirilir. Üstteki ⬇ ikonu yedeği dosyaya (.json) indirir.</p>
+        <p class="settings-note">Hesabındaki tüm bilgiler (çalışma süreleri, konular, notlar, şehir, ayarlar, denemeler) otomatik olarak hesabına kaydedilir; hangi cihazdan ya da tarayıcıdan giriş yaparsan yap aynıdır. Ayrıca her gün otomatik bulut yedeği alınır; elle yedek almak için aşağıdaki düğmeyi ya da üstteki ⬇ ikonunu (dosya olarak indirir) kullanabilirsin.</p>
         <button type="button" class="backup-btn backup-btn-secondary" id="cloudBackupNowBtn" style="width: 100%; margin-bottom: 6px;">Buluta Şimdi Yedekle</button>
-        <button type="button" class="backup-btn backup-btn-secondary" id="cloudBackupRestoreBtn" style="width: 100%;">Buluttan Geri Yükle</button>
-        <div id="cloudBackupList"></div>
-        <div style="height: 6px;"></div>
-        <button type="button" class="backup-btn backup-btn-secondary" id="backupImportBtn" style="width: 100%;">Yedekten Yükle</button>
-        <input type="file" id="backupFileInput" accept="application/json,.json" style="display:none;">
-        <div class="backup-confirm" id="backupConfirmBox">
-          <p class="backup-confirm-text" id="backupConfirmText"></p>
-          <div class="backup-confirm-row">
-            <button type="button" class="backup-btn backup-btn-secondary" id="backupConfirmCancel">Vazgeç</button>
-            <button type="button" class="backup-btn backup-btn-primary" id="backupConfirmOk">Evet, geri yükle</button>
-          </div>
-        </div>
         <p class="settings-note" id="backupStatusNote" style="margin: 8px 0 0;"></p>
       </div>
 

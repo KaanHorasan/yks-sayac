@@ -1,12 +1,12 @@
 // ============================================================================
-// YKS Sayaç — Yedekleme: dışa aktarma, bulut (Firestore) yedeği, otomatik yedek, yedekten geri yükleme
+// YKS Sayaç — Yedekleme: dışa aktarma, bulut (Firestore) yedeği, otomatik yedek (geri yükleme yok: hesap verisi yks-sayac-sync.js ile otomatik senkronlanır)
 // Klasik <script> (IIFE değil): üst düzey tanımlar diğer dosyalarla ortak global kapsamdadır.
 // Yükleme sırası yks-sayac.html içindeki <script> sırasıdır.
 // ============================================================================
 
 // ---- Veri Yedekleme ----
 
-var BACKUP_PREFIXES = ["progress-", "topics-", "study-", "streak-celebrated-"];
+var BACKUP_PREFIXES = ["progress-", "topics-", "study-", "streak-celebrated-", "focus-sessions-"];
 var BACKUP_SINGLE_KEYS = ["yks-settings", "notes-pages", "focus-city", "deneme-records", "admin-grants-applied", "focus-browser-applied"];
 // Bunlar tek başına "gerçek veri" sayılmaz: yalnızca bunlardan oluşan yedek boş kabul edilir ve buluta yazılmaz
 var BACKUP_NOISE_KEYS = ["yks-settings", "admin-grants-applied", "focus-browser-applied"];
@@ -192,54 +192,6 @@ function listCloudBackups() {
     return out;
   });
 }
-function stageCloudRestore(id) {
-  showBackupStatus("Yedek indiriliyor…", false);
-  return cloudBackupRef("payloads").doc(String(id)).get().then(function (doc) {
-    var b64 = doc.exists ? (doc.data() || {}).payload : null;
-    if (typeof b64 !== "string") throw new Error("yedek içeriği yok");
-    return gunzipToText(backupBase64ToBytes(b64));
-  }).then(function (text) {
-    var parsed = JSON.parse(text);
-    showBackupStatus("", false);
-    stagePendingRestore(parsed);
-  }).catch(function (err) {
-    console.error("Bulut yedeği okunamadı:", err);
-    showBackupStatus("Bulut yedeği okunamadı.", true);
-  });
-}
-function formatCloudBackupDate(ms) {
-  var d = new Date(ms);
-  return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear() + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
-}
-function renderCloudBackupList() {
-  var box = document.getElementById("cloudBackupList");
-  if (!box) return Promise.resolve();
-  box.textContent = "";
-  if (!cloudBackupAvailable()) {
-    showBackupStatus("Bulut yedeği için giriş yapmış olman gerekiyor.", true);
-    return Promise.resolve();
-  }
-  showBackupStatus("Yedekler yükleniyor…", false);
-  return listCloudBackups().then(function (items) {
-    showBackupStatus("", false);
-    if (!items.length) {
-      showBackupStatus("Henüz bulutta yedeğin yok.", false);
-      return;
-    }
-    items.forEach(function (it) {
-      var btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "backup-btn backup-btn-secondary";
-      btn.style.cssText = "width: 100%; margin-top: 6px; text-align: left;";
-      btn.textContent = formatCloudBackupDate(it.createdAtMs) + " · " + (it.kind === "auto" ? "otomatik" : "elle") + " · " + it.kb + " KB";
-      btn.addEventListener("click", function () { stageCloudRestore(it.id); });
-      box.appendChild(btn);
-    });
-  }).catch(function (err) {
-    console.error("Bulut yedek listesi alınamadı:", err);
-    showBackupStatus("Bulut yedekleri listelenemedi.", true);
-  });
-}
 function cloudBackupNow() {
   if (!cloudBackupAvailable()) {
     showBackupStatus("Bulut yedeği için giriş yapmış olman gerekiyor.", true);
@@ -284,91 +236,4 @@ function maybeAutoBackup() {
       if (res && res.ok) storageSet("auto-backup-last-date", todayStr);
     });
   }).catch(function (err) { console.error("Otomatik yedekleme hatası:", err); });
-}
-var pendingRestoreData = null;
-var pendingRestoreExportedAt = 0;
-// Dosyadan ya da buluttan gelen yedeği doğrular ve onay kutusunu açar (true = onaya hazır).
-function stagePendingRestore(parsed) {
-  if (!parsed || typeof parsed.data !== "object" || !parsed.data) {
-    showBackupStatus("Bu yedek geçerli bir YKS Sayaç yedeği gibi görünmüyor.", true);
-    return false;
-  }
-  var keys = Object.keys(parsed.data);
-  if (!keys.length) {
-    showBackupStatus("Yedek boş görünüyor.", true);
-    return false;
-  }
-  pendingRestoreData = parsed.data;
-  pendingRestoreExportedAt = Date.parse(parsed.exportedAt) || 0;   // yedeğin alındığı an: sonrasındaki yönetici işlemleri yeniden uygulanır
-  var box = document.getElementById("backupConfirmBox");
-  var text = document.getElementById("backupConfirmText");
-  if (text) {
-    text.textContent = keys.length + " kayıt geri yüklenecek ve mevcut verilerin üzerine yazılacak. Onaylıyor musun?";
-  }
-  if (box) box.classList.add("open");
-  return true;
-}
-function restoreBackupFromFile(file) {
-  showBackupStatus("", false);
-  var reader = new FileReader();
-  reader.onload = function () {
-    var parsed;
-    try {
-      parsed = JSON.parse(reader.result);
-    } catch (e) {
-      showBackupStatus("Dosya okunamadı. Geçerli bir yedek (.json) dosyası seç.", true);
-      return;
-    }
-    stagePendingRestore(parsed);
-  };
-  reader.onerror = function () {
-    showBackupStatus("Dosya okunamadı.", true);
-  };
-  reader.readAsText(file, "utf-8");
-}
-function cancelPendingRestore() {
-  pendingRestoreData = null;
-  var box = document.getElementById("backupConfirmBox");
-  if (box) box.classList.remove("open");
-}
-function confirmPendingRestore() {
-  if (!pendingRestoreData) return;
-  var keys = Object.keys(pendingRestoreData);
-  var data = pendingRestoreData;
-  var box = document.getElementById("backupConfirmBox");
-  if (box) box.classList.remove("open");
-  showBackupStatus("Geri yükleniyor…", false);
-  // Not sayfalarının HTML içeriği geri yüklenirken temizlenir (yedek dosyası güvenilmez girdidir)
-  if (typeof data["notes-pages"] === "string") {
-    try {
-      var np = JSON.parse(data["notes-pages"]);
-      if (np && Array.isArray(np.pages)) {
-        np.pages.forEach(function (pg) {
-          if (!pg || typeof pg !== "object") return;
-          pg.content = sanitizeNoteHtml(pg.content || "");
-          pg.title = String(pg.title || "").slice(0, 300);
-          pg.tag = String(pg.tag || "").slice(0, 100);
-        });
-        data["notes-pages"] = JSON.stringify(np);
-      }
-    } catch (e) {}
-  }
-  var sinceMs = pendingRestoreExportedAt;
-  Promise.all(keys.map(function (k) { return storageSet(k, data[k]); })).then(function () {
-    pendingRestoreData = null;
-    pendingRestoreExportedAt = 0;
-    if (!(sinceMs > 0)) return null;
-    showBackupStatus("Yönetici işlemleri kontrol ediliyor…", false);
-    // Yedekten sonra yöneticinin düştüğü/eklediği altın ve süreler geri gelmesin; çevrimdışıysa sonraki açılışta uygulanır.
-    // yedeğin alındığı andan önceki tarayıcı seansları yedekte zaten var: yeniden eklenmez
-    return storageSet("browser-restore-since", String(sinceMs)).then(function () { return scheduleGrantReapply(sinceMs); }).then(function () {
-      return Promise.race([reapplyAdminGrantsSince(), new Promise(function (resolve) { setTimeout(resolve, 8000); })]);
-    });
-  }).then(function () {
-    showBackupStatus(keys.length + " kayıt geri yüklendi. Sayfa yenileniyor…", false);
-    setTimeout(function () { location.reload(); }, 900);
-  }).catch(function (err) {
-    console.error("Geri yükleme hatası:", err);
-    showBackupStatus("Geri yükleme sırasında bir hata oluştu.", true);
-  });
 }

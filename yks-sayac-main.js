@@ -172,22 +172,6 @@ if (backupBtn) {
     });
   });
 }
-var backupImportBtn = document.getElementById("backupImportBtn");
-var backupFileInput = document.getElementById("backupFileInput");
-if (backupImportBtn && backupFileInput) {
-  backupImportBtn.addEventListener("click", function () {
-    backupFileInput.click();
-  });
-  backupFileInput.addEventListener("change", function (e) {
-    var file = e.target.files && e.target.files[0];
-    if (file) restoreBackupFromFile(file);
-    backupFileInput.value = "";
-  });
-}
-var backupConfirmCancel = document.getElementById("backupConfirmCancel");
-var backupConfirmOk = document.getElementById("backupConfirmOk");
-if (backupConfirmCancel) backupConfirmCancel.addEventListener("click", cancelPendingRestore);
-if (backupConfirmOk) backupConfirmOk.addEventListener("click", confirmPendingRestore);
 var pipBtn = document.getElementById("pipBtn");
 if (pipBtn) {
   if (!widgetPipSupported()) pipBtn.style.display = "none";
@@ -205,19 +189,11 @@ if (openGlanceBtn) openGlanceBtn.addEventListener("click", function () { locatio
 var copyGlanceLinkBtn = document.getElementById("copyGlanceLinkBtn");
 if (copyGlanceLinkBtn) copyGlanceLinkBtn.addEventListener("click", copyGlanceLink);
 var cloudBackupNowBtn = document.getElementById("cloudBackupNowBtn");
-var cloudBackupRestoreBtn = document.getElementById("cloudBackupRestoreBtn");
 if (cloudBackupNowBtn) {
   cloudBackupNowBtn.addEventListener("click", function () {
     if (cloudBackupNowBtn.disabled) return;
     cloudBackupNowBtn.disabled = true;
     cloudBackupNow().then(function () { cloudBackupNowBtn.disabled = false; });
-  });
-}
-if (cloudBackupRestoreBtn) {
-  cloudBackupRestoreBtn.addEventListener("click", function () {
-    var box = document.getElementById("cloudBackupList");
-    if (box && box.childNodes.length) { box.textContent = ""; showBackupStatus("", false); return; }
-    renderCloudBackupList();
   });
 }
 var incBtn = document.getElementById("incBtn");
@@ -322,22 +298,24 @@ Promise.all([loadSettings(), loadProgress(), loadTopics(), loadStudy()]).then(fu
       window.__studentStartedFor = currentUserUid;
       var owner = currentUserUid ? prepareSessionOwner(currentUserUid) : Promise.resolve({ fresh: false });
       owner.then(function (st) {
-        if (st.reload) { location.reload(); return; }   // başka hesabın yerel verisi temizlendi; temiz başlangıç için yenile
+        if (st.reload) return st;   // başka hesabın yerel verisi temizlendi; aşağıda yenilenir
+        // Hesabın buluttaki verisi önce yerele alınır; arayüz bundan sonra başlar (hangi cihazda girilirse girilsin aynı veri)
+        if (!currentUserUid) return st;
+        return withTimeout(dataSyncStart(currentUserUid), 12000).then(function () { return st; }, function () { return st; });
+      }).then(function (st) {
+        if (st.reload) { location.reload(); return; }
         var cityReady = loadCity().then(function (d) { cityState = d; });
         var examReady = loadExamRecords().then(function (d) { examState = d; });
         tick();
         setInterval(tick, 1000);
         checkForUpdate();
         loadCoachQuotes();
-        // Yeni cihaz: bulutta yedek varsa geri yükleme önerilir; karar verilene kadar otomatik yedek/seans işleme/özet beklemeli
-        var decided = (st.fresh && currentUserUid) ? offerCloudRestoreIfFresh(currentUserUid) : Promise.resolve(false);
-        decided.then(function () { if (sessionReadyResolve) sessionReadyResolve(); });
+        if (sessionReadyResolve) sessionReadyResolve();   // bulut verisi yerele alındı: yedek, seans işleme ve özet başlayabilir
         window.yksSessionReady.then(maybeAutoBackup);
         if (currentUserUid) {
           mergeTodayPlanIntoTopics();
           Promise.all([cityReady, window.yksSessionReady]).then(function () {
             startAdminGrantListener(currentUserUid);
-            reapplyAdminGrantsSince();   // yedekten geri yüklemeden sonra yarım kalan yönetici işlemleri varsa tamamlar
           });
           Promise.all([cityReady, examReady, window.yksSessionReady]).then(function () {
             return buildStudentSummaryPayload();

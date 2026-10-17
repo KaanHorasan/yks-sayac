@@ -123,75 +123,6 @@ window.yksApplyAdminGrant = function (id, g) {
   }).catch(function () { return false; });
   return adminGrantChain;
 };
-// ---- Yedekten geri yüklemeden sonra yönetici işlemlerini yeniden uygula ----
-// Yedek, alındığı andaki altın/çalışma süresini içerir; yönetici o andan SONRA altın düştüyse ya da süre eklediyse,
-// geri yükleme bunları silerdi (Firestore'da "uygulandı" işaretli oldukları için bir daha uygulanmazlar).
-// Çözüm: yedeğin alındığı andan (exportedAt) sonra uygulanmış işlemler yeniden uygulanır. İlerleme yerelde tutulur;
-// çevrimdışıysa ya da yarıda kesilirse bir sonraki açılışta kaldığı yerden devam eder, hiçbir işlem iki kez uygulanmaz.
-var GRANT_REAPPLY_KEY = "grant-reapply-state";
-function scheduleGrantReapply(sinceMs) {
-  var since = Math.floor(Number(sinceMs));
-  if (!isFinite(since) || since <= 0) return Promise.resolve();
-  return storageSet(GRANT_REAPPLY_KEY, JSON.stringify({ since: since, done: [] }));
-}
-function promiseWithTimeout(promise, ms) {
-  return new Promise(function (resolve, reject) {
-    var t = setTimeout(function () { reject(new Error("zaman aşımı")); }, ms);
-    promise.then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
-  });
-}
-function runGrantReapply() {
-  if (typeof currentUserUid === "undefined" || !currentUserUid || typeof fbDb === "undefined" || !fbDb) return Promise.resolve(0);
-  return storageGet(GRANT_REAPPLY_KEY).then(function (raw) {
-    var st = null;
-    try { st = JSON.parse(raw); } catch (e) {}
-    var since = st ? Number(st.since) : 0;
-    if (!st || !isFinite(since) || since <= 0) return 0;
-    var done = Array.isArray(st.done) ? st.done.slice() : [];
-    var col = fbDb.collection("studentData").doc(currentUserUid).collection("adminGrants");
-    return promiseWithTimeout(col.get(), 15000).then(function (snap) {
-      var list = [];
-      snap.forEach(function (d) {
-        var g = d.data() || {};
-        if (g.applied !== true) return;                          // bekleyenler zaten normal akışla uygulanır
-        if (g.type !== "coins" && g.type !== "study") return;    // duyurular tekrar gösterilmez
-        if (done.indexOf(d.id) >= 0) return;
-        var at = Number(g.appliedAt) || Number(g.createdAt) || 0;
-        if (at > since) list.push({ id: d.id, at: at, g: g });
-      });
-      list.sort(function (a, b) { return a.at - b.at; });
-      var count = 0;
-      var chain = Promise.resolve();
-      list.forEach(function (item) {
-        chain = chain.then(function () {
-          return doApplyAdminGrant(item.g, true).then(function (applied) {
-            if (applied) count++;
-            done.push(item.id);   // geçersiz olanlar da işlendi sayılır
-            return storageSet(GRANT_REAPPLY_KEY, JSON.stringify({ since: since, done: done }));
-          });
-        });
-      });
-      return chain.then(function () { return count; });
-    }).then(function (count) {
-      return storageSet(GRANT_REAPPLY_KEY, "").then(function () {
-        if (count > 0) {
-          showUpdateToast("Yedekten sonraki " + count + " yönetici işlemin yeniden uygulandı.");
-          scheduleAdminSummarySync();
-        }
-        return count;
-      });
-    });
-  }).catch(function (err) {
-    console.error("Yönetici işlemleri yeniden uygulanamadı (sonra tekrar denenecek):", err);
-    return 0;
-  });
-}
-function reapplyAdminGrantsSince() {
-  // Normal işlem akışıyla aynı sıraya girer: altın/şehir verisi aynı anda iki yerden okunup yazılmasın.
-  var run = adminGrantChain.then(function () { return runGrantReapply(); });
-  adminGrantChain = run.then(function () { return true; }, function () { return true; });
-  return run;
-}
 // ---- Masaüstü çalışma tarayıcısı seanslarını çalışma süresine ve altına işle (v2.5) ----
 // studentData/{uid}/focusSessions belgeleri okunur; her biri bir kez işlenir (kimlikler yerelde tutulur).
 // Süre "Genel" dersine eklenir, altın odak moduyla aynı formülle (1.5x) verilir. Kötüye kullanıma karşı:
@@ -241,10 +172,10 @@ function applyBrowserSessions(uid) {
     var claimRef = userDoc.collection("info").doc("browserApplied");
     return userDoc.collection("focusSessions")
       .where("startedAtMs", ">=", Date.now() - 14 * 86400000).get().then(function (snap) {
-        return Promise.all([storageGet(BROWSER_APPLIED_KEY), storageGet("browser-restore-since"), localDataIsFresh()]).then(function (r) {
+        return Promise.all([storageGet(BROWSER_APPLIED_KEY), localDataIsFresh()]).then(function (r) {
           var local = { ids: [], days: {} };
           try { var p = JSON.parse(r[0]); if (p && Array.isArray(p.ids)) local = { ids: p.ids, days: p.days || {} }; } catch (e) {}
-          var since = Number(r[1]) || 0, fresh = !!r[2];
+          var fresh = !!r[1];
           var sessions = [];
           snap.forEach(function (d) { sessions.push({ id: d.id, s: d.data() || {} }); });
           return fbDb.runTransaction(function (tx) {
@@ -259,9 +190,8 @@ function applyBrowserSessions(uid) {
                 if (seen[it.id]) return;
                 seen[it.id] = true;
                 var started = Number(it.s.startedAtMs);
-                // yeni/boş cihazda ve bulutta kayıt yokken geçmiş seanslar zaten eski cihazda/yedekte işlenmiştir;
-                // yedekten geri yükleme sonrası da yedeğin alındığı andan önceki seanslar yeniden eklenmez
-                var skip = (!cloud && fresh) || (since > 0 && isFinite(started) && started < since);
+                // yeni/boş cihazda ve bulutta kayıt yokken geçmiş seanslar zaten eski cihazda işlenmiştir
+                var skip = !cloud && fresh;
                 if (!skip) toApply.push(it);
               });
               var ids = Object.keys(seen);
@@ -373,18 +303,18 @@ function buildStudentSummaryPayloadFull() {
 
 
 // ============================================================================
-// Oturum sahibi ve yeni cihaz koruması (v3.7.0)
-// - Çıkış yapınca yerel veri silinmediği için başka bir hesapla girilince önceki hesabın verisi yeni hesaba karışıyordu.
-// - Yeni cihazda/tarayıcıda yerel veri boş olduğundan boş özet ve boş "otomatik yedek" buluta yazılıp gerçek yedeklerin
-//   yerine geçiyordu (7 otomatik yedek sınırıyla eskiler siliniyordu).
+// Oturum sahibi koruması ve hesap verisi senkronu (v3.8.0)
+// - Çıkış yapınca yerel veri silinmediği için başka bir hesapla girilince önceki hesabın verisi yeni hesaba karışıyordu:
+//   hesap değişince yerel veri temizlenir, yeni hesabın verisi buluttan gelir.
+// - Hesabın tüm verisi (çalışma süreleri, konular, notlar, şehir, ayarlar, denemeler…) buluta otomatik senkronlanır;
+//   hangi cihazdan/tarayıcıdan girilirse girilsin hesabın içindeki bilgiler aynıdır. Yedekten geri yükleme kaldırıldı.
 // ============================================================================
 var LOCAL_OWNER_KEY = "local-owner-uid";
-var RESTORE_DISMISSED_KEY = "restore-offer-dismissed";
 // Hesaba özel yerel durum anahtarları: hesap değişince temizlenir
-var ACCOUNT_STATE_KEYS = ["admin-grants-applied", "focus-browser-applied", "grant-reapply-state", "auto-cloud-backup-last-date",
-  "auto-backup-last-date", "yks-mistake-due-toast", "browser-restore-since", RESTORE_DISMISSED_KEY];
+var ACCOUNT_STATE_KEYS = ["admin-grants-applied", "focus-browser-applied", "auto-cloud-backup-last-date",
+  "auto-backup-last-date", "yks-mistake-due-toast", "sync-meta", "sync-dirty"];
 var sessionReadyResolve = null;
-// Yeni cihaz kararı (bulut yedeğinden geri yükle / boş başla) verilene kadar otomatik yedek ve seans işleme beklemeli
+// Hesabın bulut verisi yerele alınana kadar otomatik yedek, seans işleme ve özet gönderme beklemeli
 window.yksSessionReady = new Promise(function (resolve) { sessionReadyResolve = resolve; });
 
 function storageRemove(key) {
@@ -430,56 +360,300 @@ function prepareSessionOwner(uid) {
     });
   });
 }
-function restoreCloudBackupNow(id) {
-  return cloudBackupRef("payloads").doc(String(id)).get().then(function (doc) {
-    var b64 = doc.exists ? (doc.data() || {}).payload : null;
-    if (typeof b64 !== "string") throw new Error("yedek içeriği yok");
-    return gunzipToText(backupBase64ToBytes(b64));
-  }).then(function (text) {
-    if (!stagePendingRestore(JSON.parse(text))) throw new Error("geçersiz yedek");
-    confirmPendingRestore();   // geri yükler ve sayfayı yeniler
+
+// ---------------------------------------------------------------------------
+// Hesap verisi senkronu
+// Yerel anahtarlar (BACKUP_PREFIXES / BACKUP_SINGLE_KEYS ile aynı küme) studentData/{uid}/info/ud_<anahtar> belgelerine
+// yazılır; giriş yapılınca ve belirli aralıklarla buluttaki değişiklikler yerele birleştirilir.
+//   - study-*: konuya göre en büyük süre alınır; çalışıyor/başlangıç gibi cihaza özel alanlar buluta gitmez
+//   - progress-*: en büyük sayı · streak-celebrated-*: bayrak · focus-sessions-* ve işlenmiş kimlik listeleri: birleşim
+//   - diğerleri (ayarlar, notlar, şehir, denemeler, günün konuları): en son değişen kazanır
+// ---------------------------------------------------------------------------
+var SYNC_META_KEY = "sync-meta";      // { synced: { anahtar: bulut zamanı }, lastPull }
+var SYNC_DIRTY_KEY = "sync-dirty";    // { anahtar: son yerel değişiklik zamanı } — henüz buluta yazılmamışlar
+var SYNC_DEVICE_KEY = "sync-device";
+var SYNC_DOC_PREFIX = "ud_";
+var SYNC_ID_RE = /^[\w.-]{1,120}$/;
+var syncActiveUid = null;
+var syncBusy = false;
+var syncAgain = false;
+var syncFlushTimer = null;
+var syncLastPullAt = 0;
+var syncReloadTimer = null;
+var syncTimersStarted = false;
+
+function lsGetJson(key, dflt) {
+  try { var v = JSON.parse(localStorage.getItem(key)); return v && typeof v === "object" ? v : dflt; } catch (e) { return dflt; }
+}
+function lsSetJson(key, obj) { try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) {} }
+function syncMetaLoad() {
+  var m = lsGetJson(SYNC_META_KEY, {});
+  if (!m.synced || typeof m.synced !== "object") m.synced = {};
+  m.lastPull = Number(m.lastPull) || 0;
+  return m;
+}
+function syncMetaSave(m) { lsSetJson(SYNC_META_KEY, m); }
+function syncDirtyLoad() { return lsGetJson(SYNC_DIRTY_KEY, {}); }
+function syncDirtySave(d) { lsSetJson(SYNC_DIRTY_KEY, d); }
+function syncDeviceId() {
+  var id = null;
+  try { id = localStorage.getItem(SYNC_DEVICE_KEY); } catch (e) {}
+  if (!id) {
+    id = "d" + Math.random().toString(36).slice(2, 10);
+    try { localStorage.setItem(SYNC_DEVICE_KEY, id); } catch (e) {}
+  }
+  return id;
+}
+function isSyncKey(key) {
+  if (typeof key !== "string" || !SYNC_ID_RE.test(key)) return false;
+  if (BACKUP_SINGLE_KEYS.indexOf(key) >= 0) return true;
+  return BACKUP_PREFIXES.some(function (p) { return key.indexOf(p) === 0 && key.length > p.length; });
+}
+function syncKind(key) {
+  if (key.indexOf("study-") === 0) return "study";
+  if (key.indexOf("progress-") === 0) return "int";
+  if (key.indexOf("streak-celebrated-") === 0) return "flag";
+  if (key.indexOf("focus-sessions-") === 0) return "union";
+  if (key === "admin-grants-applied") return "ids";
+  if (key === "focus-browser-applied") return "browserApplied";
+  return "lww";
+}
+function syncParse(raw, dflt) { try { var v = JSON.parse(raw); return v === null || v === undefined ? dflt : v; } catch (e) { return dflt; } }
+function withTimeout(promise, ms) {
+  return new Promise(function (resolve, reject) {
+    var t = setTimeout(function () { reject(new Error("zaman aşımı")); }, ms);
+    promise.then(function (v) { clearTimeout(t); resolve(v); }, function (e) { clearTimeout(t); reject(e); });
   });
 }
-function showRestoreOffer(best, uid, done) {
-  var ov = document.createElement("div");
-  ov.className = "admin-msg-overlay";
-  ov.id = "restoreOfferOverlay";
-  var box = document.createElement("div");
-  box.className = "admin-msg-box";
-  var title = document.createElement("div");
-  title.className = "admin-msg-title";
-  title.textContent = "☁️ Bulutta yedeğin var";
-  var text = document.createElement("p");
-  text.className = "admin-msg-text";
-  text.textContent = "Bu cihazda henüz verin yok. Hesabında " + formatCloudBackupDate(best.createdAtMs) + " tarihli bir bulut yedeği (" + best.keyCount + " kayıt) bulunuyor. Geri yüklensin mi?";
-  var yes = document.createElement("button");
-  yes.type = "button"; yes.className = "save-btn"; yes.textContent = "Geri yükle";
-  var no = document.createElement("button");
-  no.type = "button"; no.className = "save-btn"; no.style.marginLeft = "8px"; no.textContent = "Boş başla";
-  yes.addEventListener("click", function () {
-    yes.disabled = true; no.disabled = true;
-    text.textContent = "Yedek indiriliyor…";
-    restoreCloudBackupNow(best.id).catch(function () {
-      text.textContent = "Yedek geri yüklenemedi. İnternetini kontrol edip sayfayı yenile ya da Ayarlar'dan tekrar dene.";
-      no.disabled = false; no.textContent = "Boş başla";
-    });
-  });
-  no.addEventListener("click", function () {
-    storageSet(RESTORE_DISMISSED_KEY, uid).then(function () { ov.remove(); done(); });
-  });
-  box.appendChild(title); box.appendChild(text); box.appendChild(yes); box.appendChild(no);
-  ov.appendChild(box);
-  document.body.appendChild(ov);
+
+// Her yerel yazma, senkron kümesindeki anahtarlar için "buluta yazılacak" olarak işaretlenir
+var rawStorageSet = storageSet;
+storageSet = function (key, value) {
+  var p = rawStorageSet(key, value);
+  if (isSyncKey(key)) markSyncDirty(key);
+  return p;
+};
+function markSyncDirty(key) {
+  var d = syncDirtyLoad();
+  d[key] = Date.now();
+  syncDirtySave(d);
+  scheduleSyncFlush();
 }
-// Yeni cihazda bulut yedeği varsa geri yüklemeyi önerir; karar verilene (ya da öneri yoksa hemen) çözülür
-function offerCloudRestoreIfFresh(uid) {
-  return storageGet(RESTORE_DISMISSED_KEY).then(function (dismissed) {
-    if (dismissed === uid || !cloudBackupAvailable()) return false;
-    return listCloudBackups().then(function (items) {
-      var best = null;
-      items.forEach(function (it) { if (!best && it.keyCount > 1) best = it; });   // en yeni, içeriği olan yedek
-      if (!best) return false;
-      return new Promise(function (resolve) { showRestoreOffer(best, uid, resolve); });
+function scheduleSyncFlush(delay) {
+  if (!syncActiveUid) return;
+  clearTimeout(syncFlushTimer);
+  syncFlushTimer = setTimeout(flushSync, delay || 4000);
+}
+
+function mergeSyncValue(key, localRaw, remoteRaw, localChanged, localT, remoteT) {
+  var kind = syncKind(key), i;
+  if (kind === "study") {
+    var L = syncParse(localRaw, {}), R = syncParse(remoteRaw, {});
+    var subs = {}, same = true;
+    [L.subjects || {}, R.subjects || {}].forEach(function (src) {
+      Object.keys(src).forEach(function (k) { subs[k] = Math.max(Number(subs[k]) || 0, Number(src[k]) || 0); });
     });
-  }).catch(function () { return false; });
+    var rs = R.subjects || {};
+    Object.keys(subs).forEach(function (k) { if ((Number(rs[k]) || 0) !== subs[k]) same = false; });
+    // çalışıyor / başlangıç / aktif ders bu cihazın durumudur: yerelden kalır
+    return { value: JSON.stringify(Object.assign({}, L, { subjects: subs })), pushBack: !same };
+  }
+  if (kind === "int") {
+    var m = Math.max(Number(localRaw) || 0, Number(remoteRaw) || 0);
+    return { value: String(m), pushBack: m !== (Number(remoteRaw) || 0) };
+  }
+  if (kind === "flag") return { value: "1", pushBack: String(remoteRaw) !== "1" };
+  if (kind === "union" || kind === "ids") {
+    var a = syncParse(localRaw, []), b = syncParse(remoteRaw, []);
+    if (!Array.isArray(a)) a = [];
+    if (!Array.isArray(b)) b = [];
+    var seen = {}, out = [];
+    a.concat(b).forEach(function (it) {
+      var s = typeof it === "string" ? "s:" + it : "j:" + JSON.stringify(it);
+      if (!seen[s]) { seen[s] = 1; out.push(it); }
+    });
+    return { value: JSON.stringify(out), pushBack: out.length !== b.length };
+  }
+  if (kind === "browserApplied") {
+    var la = syncParse(localRaw, {}), ra = syncParse(remoteRaw, {});
+    var ids = {}, days = {};
+    (la.ids || []).concat(ra.ids || []).forEach(function (id) { ids[id] = 1; });
+    [la.days || {}, ra.days || {}].forEach(function (src) {
+      Object.keys(src).forEach(function (k) { days[k] = Math.max(Number(days[k]) || 0, Number(src[k]) || 0); });
+    });
+    var idList = Object.keys(ids);
+    if (idList.length > 500) idList = idList.slice(-500);
+    return { value: JSON.stringify({ ids: idList, days: days }), pushBack: idList.length !== (ra.ids || []).length };
+  }
+  // en son değişen kazanır; yerelde hiç senkronlanmamış eski veri varsa (localT = 0) buluttaki geçerli olur
+  if (!localChanged) return { value: remoteRaw, pushBack: false };
+  if (localRaw === remoteRaw) return { value: localRaw, pushBack: false };
+  return remoteT >= localT ? { value: remoteRaw, pushBack: false } : { value: localRaw, pushBack: true };
+}
+
+function encodeForCloud(key, raw) {
+  if (raw === null || raw === undefined) return Promise.resolve(null);
+  var text = String(raw);
+  if (syncKind(key) === "study") {
+    try { text = JSON.stringify({ subjects: (JSON.parse(text) || {}).subjects || {} }); } catch (e) {}
+  }
+  if (text.length <= 200000) return Promise.resolve({ v: text, z: 0 });
+  try {
+    return gzipText(text).then(function (bytes) {
+      var b64 = backupBytesToBase64(bytes);
+      return b64.length <= 950000 ? { v: b64, z: 1 } : null;
+    }).catch(function () { return null; });
+  } catch (e) {
+    return Promise.resolve(null);   // sıkıştırma desteklenmiyorsa: büyük değer senkronlanmaz (sonsuz yeniden deneme yok)
+  }
+}
+function decodeFromCloud(r) {
+  if (r.z) return gunzipToText(backupBase64ToBytes(String(r.v)));
+  return Promise.resolve(String(r.v));
+}
+
+function applyRemoteDoc(r, applied) {
+  var k = r.k, t = Number(r.t) || 0;
+  if (t <= (syncMetaLoad().synced[k] || 0)) return Promise.resolve();   // bu sürüm zaten yerelde
+  return Promise.all([decodeFromCloud(r), storageGet(k)]).then(function (res) {
+    var remoteRaw = res[0], localRaw = res[1];
+    if (remoteRaw === null || remoteRaw === undefined) return;
+    var meta = syncMetaLoad(), dirty = syncDirtyLoad();
+    var localChanged = (k in dirty) || (localRaw !== null && localRaw !== undefined && !(k in meta.synced));
+    var out = (localRaw === null || localRaw === undefined)
+      ? { value: remoteRaw, pushBack: false }
+      : mergeSyncValue(k, localRaw, remoteRaw, localChanged, dirty[k] || 0, t);
+    var write = out.value !== localRaw ? rawStorageSet(k, out.value) : Promise.resolve();
+    if (out.value !== localRaw) applied.push(k);
+    return write.then(function () {
+      var m = syncMetaLoad();
+      m.synced[k] = t;
+      syncMetaSave(m);
+      if (out.pushBack) markSyncDirty(k);
+    });
+  }).catch(function () { /* bozuk ya da çözülemeyen belge: atla */ });
+}
+
+// Buluttaki yeni/değişen belgeleri yerele birleştirir. live = sayfa açıkken yapılan çekme (değişiklik varsa güvenle yenilenir)
+function pullChanges(live) {
+  if (!syncActiveUid || typeof fbDb === "undefined" || !fbDb) return Promise.resolve({ applied: [] });
+  var uid = syncActiveUid;
+  syncLastPullAt = Date.now();
+  var meta = syncMetaLoad();
+  // cihaz saatleri arasındaki farklara karşı 10 dakika pay bırakılır; zaten işlenmiş sürümler atlanır
+  var since = meta.lastPull > 0 ? Math.max(0, meta.lastPull - 600000) : 0;
+  return fbDb.collection("studentData").doc(uid).collection("info").where("t", ">", since).get().then(function (snap) {
+    var docs = [];
+    snap.forEach(function (d) {
+      var v = d.data() || {};
+      if (v.sync === 1 && typeof v.k === "string" && isSyncKey(v.k)) docs.push(v);
+    });
+    docs.sort(function (a, b) { return (Number(a.t) || 0) - (Number(b.t) || 0); });
+    var applied = [], maxT = 0, chain = Promise.resolve();
+    docs.forEach(function (r) {
+      maxT = Math.max(maxT, Number(r.t) || 0);
+      chain = chain.then(function () { return applyRemoteDoc(r, applied); });
+    });
+    return chain.then(function () {
+      var m = syncMetaLoad();
+      if (maxT > m.lastPull) m.lastPull = maxT;
+      syncMetaSave(m);
+      return { applied: applied };
+    });
+  }).then(function (res) {
+    if (live && res.applied.length) scheduleSafeReload();
+    return res;
+  });
+}
+
+// Başka cihazdan gelen değişiklik ekrana yansısın diye sayfa yenilenir; çalışma sayacı/odak modu açıksa ya da bir alana yazılıyorsa beklenir
+function scheduleSafeReload() {
+  clearTimeout(syncReloadTimer);
+  syncReloadTimer = setTimeout(function () {
+    var ae = document.activeElement;
+    var busy = (typeof studyState !== "undefined" && studyState && studyState.running) ||
+      (typeof focusModeState !== "undefined" && focusModeState === "active") ||
+      (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName));
+    if (busy) { scheduleSafeReload(); return; }
+    flushSync().then(function () { location.reload(); });
+  }, 4000);
+}
+
+function flushSync() {
+  if (!syncActiveUid || typeof fbDb === "undefined" || !fbDb) return Promise.resolve();
+  if (syncBusy) { syncAgain = true; return Promise.resolve(); }
+  if (!Object.keys(syncDirtyLoad()).length) return Promise.resolve();
+  syncBusy = true;
+  syncAgain = false;
+  var uid = syncActiveUid;
+  // yazmadan önce buluttakini birleştir: başka cihazın verisi ezilmesin
+  return pullChanges(false).catch(function () {}).then(function () {
+    var dirty = syncDirtyLoad();
+    var keys = Object.keys(dirty).slice(0, 100);
+    return Promise.all(keys.map(function (k) {
+      return storageGet(k).then(function (raw) {
+        return encodeForCloud(k, raw).then(function (enc) { return { k: k, mod: dirty[k], enc: enc }; });
+      });
+    }));
+  }).then(function (items) {
+    var stamp = Date.now();
+    var writes = items.filter(function (it) { return it.enc; });
+    var col = fbDb.collection("studentData").doc(uid).collection("info");
+    var batch = fbDb.batch();
+    writes.forEach(function (it) {
+      batch.set(col.doc(SYNC_DOC_PREFIX + it.k), { sync: 1, k: it.k, v: it.enc.v, z: it.enc.z, t: stamp, d: syncDeviceId() });
+    });
+    return (writes.length ? batch.commit() : Promise.resolve()).then(function () {
+      var m = syncMetaLoad(), d = syncDirtyLoad();
+      writes.forEach(function (it) { m.synced[it.k] = stamp; });
+      // yazma sırasında yeniden değişen anahtar "kirli" kalır; boş/çok büyük olanlar bir daha denenmez
+      items.forEach(function (it) { if (d[it.k] === it.mod) delete d[it.k]; });
+      syncMetaSave(m);
+      syncDirtySave(d);
+    });
+  }).then(function () {
+    syncBusy = false;
+    if (syncAgain || Object.keys(syncDirtyLoad()).length) scheduleSyncFlush(1500);
+  }, function () {
+    syncBusy = false;
+    scheduleSyncFlush(30000);   // çevrimdışı ya da geçici hata: sonra tekrar dene
+  });
+}
+
+// Bu cihazda olup bulutta hiç görülmemiş anahtarları buluta gönderilecek olarak işaretler (ilk senkron)
+function seedLocalOnlyKeys() {
+  return collectAllBackupKeys().then(function (keys) {
+    return Promise.all(keys.map(function (k) {
+      return storageGet(k).then(function (v) { return v === null || v === undefined ? null : k; });
+    }));
+  }).then(function (present) {
+    var m = syncMetaLoad(), d = syncDirtyLoad(), now = Date.now(), added = 0;
+    present.forEach(function (k) {
+      if (k && isSyncKey(k) && !(k in m.synced) && !(k in d)) { d[k] = now; added++; }
+    });
+    if (added) syncDirtySave(d);
+  });
+}
+
+function startDataSyncTimers() {
+  if (syncTimersStarted) return;
+  syncTimersStarted = true;
+  setInterval(function () { if (!document.hidden) pullChanges(true).catch(function () {}); }, 90000);
+  setInterval(function () { flushSync(); }, 20000);
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) flushSync();
+    else if (Date.now() - syncLastPullAt > 20000) pullChanges(true).catch(function () {});
+  });
+  window.addEventListener("pagehide", function () { flushSync(); });
+  window.addEventListener("online", function () { flushSync(); pullChanges(true).catch(function () {}); });
+}
+
+// Giriş yapılınca: önce buluttaki hesap verisi yerele alınır (arayüz bundan sonra başlar), sonra senkron sürekli çalışır.
+// Bulut okunamazsa (çevrimdışı) yerel veriyle devam edilir ve bulutta olup görülmemiş anahtarlar üzerine yazılmaz.
+function dataSyncStart(uid) {
+  syncActiveUid = uid;
+  var pullOk = false;
+  return withTimeout(pullChanges(false), 8000).then(function () { pullOk = true; }, function () {})
+    .then(function () { return pullOk ? seedLocalOnlyKeys() : null; })
+    .then(function () { startDataSyncTimers(); scheduleSyncFlush(800); });
 }
