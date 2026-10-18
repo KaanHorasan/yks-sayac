@@ -1782,7 +1782,9 @@ function focusTextToConfig() {
     var plm = isYtUrl ? p[2].match(/^https:\/\/(?:www\.|m\.)?youtube\.com\/playlist\?(?:[^#\s]*&)?list=([\w-]{10,80})/i) : null;
     var yt = (isYtUrl || /^[\w-]{11}$/.test(p[2])) ? focusYtId(p[2]) : "";
     var item;
-    if (plm) { item = { title: p[1], playlistId: plm[1] }; if (yt) item.youtubeId = yt; }
+    var kp = p[2].match(/^kocpdf:([a-z0-9]{8,30})$/);
+    if (kp) item = { title: p[1], pdfId: kp[1] };
+    else if (plm) { item = { title: p[1], playlistId: plm[1] }; if (yt) item.youtubeId = yt; }
     else if (yt) item = { title: p[1], youtubeId: yt };
     else if (isYtUrl) { problems.push(n + "YouTube için tek bir video ya da oynatma listesi (youtube.com/playlist?list=...) bağlantısı kullan."); return; }
     else if (/^https:\/\/\S+$/i.test(p[2])) item = { title: p[1], url: p[2] };
@@ -1839,7 +1841,7 @@ function focusFillEditor(cfg) {
   var lines = [];
   (cfg.menu || []).forEach(function (c) {
     (c.items || []).forEach(function (it) {
-      lines.push(c.category + " | " + (it.topic ? it.topic + " | " : "") + it.title + " | " + (it.playlistId ? "https://www.youtube.com/playlist?list=" + it.playlistId + (it.youtubeId ? "&v=" + it.youtubeId : "") : (it.youtubeId ? "https://www.youtube.com/watch?v=" + it.youtubeId : it.url)));
+      lines.push(c.category + " | " + (it.topic ? it.topic + " | " : "") + it.title + " | " + (it.pdfId ? "kocpdf:" + it.pdfId : it.playlistId ? "https://www.youtube.com/playlist?list=" + it.playlistId + (it.youtubeId ? "&v=" + it.youtubeId : "") : (it.youtubeId ? "https://www.youtube.com/watch?v=" + it.youtubeId : it.url)));
     });
   });
   g("focusMenuInput").value = lines.join("\n");
@@ -1912,7 +1914,7 @@ function focusRenderPreview() {
     var d = byDers[p[0]];
     if (!d) { d = byDers[p[0]] = { name: p[0], topics: {}, order: [], count: 0 }; tree.push(d); }
     if (!d.topics[topic]) { d.topics[topic] = []; d.order.push(topic); }
-    d.topics[topic].push({ title: p[1], id: id, line: li, list: /youtube\.com\/playlist\?/i.test(p[2]) });
+    d.topics[topic].push({ title: p[1], id: id, line: li, list: /youtube\.com\/playlist\?/i.test(p[2]), pdf: /^kocpdf:/.test(p[2]) });
     d.count++;
   });
   tree.forEach(function (d) {
@@ -1943,7 +1945,7 @@ function focusRenderPreview() {
         } else {
           var st = document.createElement("div");
           st.className = "focus-thumb-site";
-          st.textContent = v.list ? "📃" : "🌐";
+          st.textContent = v.pdf ? "📄" : (v.list ? "📃" : "🌐");
           t.appendChild(st);
         }
         var sp = document.createElement("span");
@@ -2032,21 +2034,189 @@ function focusQuickAdd() {
   });
 }
 
+// ---- Koç PDF'leri (v3.9): Firestore'a parçalar halinde yazılır (Firebase Storage ücretli olduğu için kullanılmıyor) ----
+// focusFiles/{koç}/pdfs/{id} = {title,size,parts,createdAt}; focusFiles/{koç}/pdfs/{id}/parts/p000.. = {d: base64}
+var FOCUS_PDF_MAX = 20 * 1024 * 1024;      // tek PDF
+var FOCUS_PDF_QUOTA = 200 * 1024 * 1024;   // koç başına toplam
+var FOCUS_PDF_PART = 524288;               // 512 KB -> base64 ≈ 699 bin karakter (kural sınırı 700 bin)
+var focusPdfCoach = "";
+var focusPdfFiles = [];
+var focusPdfBusy = false;
+
+function focusPdfCol() { return fbDb.collection("focusFiles").doc(focusPdfCoach).collection("pdfs"); }
+function focusPdfMB(b) { return (b / 1048576).toFixed(b >= 10485760 ? 0 : 1) + " MB"; }
+function focusPdfNote(text, bad) {
+  var n = document.getElementById("focusPdfNote");
+  if (!n) return;
+  n.textContent = text || "";
+  n.style.color = bad ? "var(--danger)" : "";
+}
+function focusPdfBytes(file) {
+  if (file.arrayBuffer) return file.arrayBuffer().then(function (b) { return new Uint8Array(b); });
+  return new Promise(function (res, rej) {
+    var r = new FileReader();
+    r.onload = function () { res(new Uint8Array(r.result)); };
+    r.onerror = function () { rej(new Error("Dosya okunamadı.")); };
+    r.readAsArrayBuffer(file);
+  });
+}
+function focusPdfB64(u8) {
+  var s = "";
+  for (var i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+function focusPdfPartRef(id, n) {
+  return focusPdfCol().doc(id).collection("parts").doc("p" + ("000" + n).slice(-3));
+}
+
+function focusPdfRender() {
+  var box = document.getElementById("focusPdfList");
+  if (!box) return;
+  box.innerHTML = "";
+  var total = 0;
+  var ta = document.getElementById("focusMenuInput");
+  focusPdfFiles.forEach(function (f) {
+    total += f.size;
+    var row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;";
+    var name = document.createElement("span");
+    name.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+    var used = ta.value.indexOf("kocpdf:" + f.id) >= 0;
+    name.textContent = "📄 " + f.title + " · " + focusPdfMB(f.size) + (used ? "" : " · listede değil");
+    var del = document.createElement("button");
+    del.type = "button";
+    del.className = "backup-btn backup-btn-secondary";
+    del.style.cssText = "padding:2px 8px;font-size:11px;width:auto;";
+    del.textContent = "Sil";
+    del.addEventListener("click", function () { focusPdfDelete(f); });
+    row.appendChild(name);
+    row.appendChild(del);
+    box.appendChild(row);
+  });
+  var u = document.getElementById("focusPdfUsage");
+  if (u) u.textContent = focusPdfFiles.length ? "Yüklenen PDF'ler: " + focusPdfMB(total) + " / " + focusPdfMB(FOCUS_PDF_QUOTA) : "";
+}
+
+function focusPdfRefresh() {
+  if (!focusPdfCoach) return Promise.resolve();
+  return focusPdfCol().get().then(function (snap) {
+    focusPdfFiles = [];
+    snap.forEach(function (d) {
+      var x = d.data();
+      focusPdfFiles.push({ id: d.id, title: String(x.title || "PDF"), size: Number(x.size) || 0, parts: Number(x.parts) || 0, createdAt: Number(x.createdAt) || 0 });
+    });
+    focusPdfFiles.sort(function (a, b) { return b.createdAt - a.createdAt; });
+    focusPdfRender();
+  }).catch(function (err) {
+    var m = (err && err.message) || "";
+    focusPdfNote(/permission/i.test(m) ? "PDF listesi okunamadı: Firestore kurallarına focusFiles bloğunu ekleyip yayınla." : "PDF listesi okunamadı: " + m, true);
+  });
+}
+
+function focusPdfUploadOne(file, cat, topic) {
+  var title = file.name.replace(/\.pdf$/i, "").replace(/\|/g, "/").replace(/\s+/g, " ").trim().slice(0, 100) || "PDF";
+  if (file.size > FOCUS_PDF_MAX) return Promise.reject(new Error(file.name + ": en çok " + focusPdfMB(FOCUS_PDF_MAX) + " olabilir."));
+  var used = focusPdfFiles.reduce(function (s, f) { return s + f.size; }, 0);
+  if (used + file.size > FOCUS_PDF_QUOTA) return Promise.reject(new Error(file.name + ": toplam " + focusPdfMB(FOCUS_PDF_QUOTA) + " sınırı aşılır; önce eski PDF'lerden sil."));
+  var id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  var written = 0;
+  return focusPdfBytes(file).then(function (u8) {
+    var head = "";
+    for (var i = 0; i < Math.min(u8.length, 1024); i++) head += String.fromCharCode(u8[i]);
+    if (head.indexOf("%PDF-") < 0) throw new Error(file.name + ": bu dosya bir PDF değil.");
+    var parts = Math.ceil(u8.length / FOCUS_PDF_PART);
+    var chain = Promise.resolve();
+    for (var n = 0; n < parts; n++) {
+      (function (n) {
+        chain = chain.then(function () {
+          focusPdfNote("Yükleniyor: " + title + " (" + (n + 1) + "/" + parts + ")…");
+          return focusPdfPartRef(id, n).set({ d: focusPdfB64(u8.subarray(n * FOCUS_PDF_PART, (n + 1) * FOCUS_PDF_PART)) }).then(function () { written++; });
+        });
+      })(n);
+    }
+    // Üst veri en son yazılır: öğrenciler yarım yüklenmiş dosyayı hiç görmez
+    return chain.then(function () {
+      return focusPdfCol().doc(id).set({ title: title, size: u8.length, parts: parts, createdAt: Date.now() });
+    }).then(function () { return { id: id, title: title, size: u8.length, parts: parts, createdAt: Date.now() }; });
+  }).then(function (rec) {
+    focusPdfFiles.unshift(rec);
+    var ta = document.getElementById("focusMenuInput");
+    ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, "") + "\n" : "") + cat + " | " + (topic ? topic + " | " : "") + title + " | kocpdf:" + id;
+    focusOpenKey = cat;
+    focusRenderPreview();
+    focusPdfRender();
+    return rec;
+  }, function (err) {
+    // yarım kalan parçaları temizle
+    var jobs = [];
+    for (var n = 0; n < written + 1; n++) jobs.push(focusPdfPartRef(id, n).delete().catch(function () {}));
+    return Promise.all(jobs).then(function () { throw err; });
+  });
+}
+
+function focusPdfUploadAll() {
+  if (focusPdfBusy) return;
+  var input = document.getElementById("focusPdfFile");
+  var files = Array.prototype.slice.call(input.files || []);
+  if (!files.length) { focusPdfNote("Önce bir PDF dosyası seç.", true); return; }
+  var cat = document.getElementById("focusQuickDers").value;
+  var topic = document.getElementById("focusQuickKonu").value;
+  if (!cat) { focusPdfNote("Önce ders seç.", true); return; }
+  var btn = document.getElementById("focusPdfBtn");
+  focusPdfBusy = true;
+  btn.disabled = true;
+  var ok = 0, errs = [];
+  var chain = Promise.resolve();
+  files.forEach(function (f) {
+    chain = chain.then(function () {
+      return focusPdfUploadOne(f, cat, topic).then(function () { ok++; }, function (e) {
+        var m = (e && e.message) || "yüklenemedi";
+        errs.push(/permission/i.test(m) ? f.name + ": izin yok (Firestore kurallarına focusFiles bloğunu ekleyip yayınla)." : m);
+      });
+    });
+  });
+  chain.then(function () {
+    input.value = "";
+    focusPdfNote((ok ? ok + " PDF yüklendi ve listeye eklendi. Öğrencilere görünmesi için aşağıdaki Kaydet'e bas. " : "") + errs.join(" "), !ok && errs.length > 0);
+  }).then(function () {
+    focusPdfBusy = false;
+    btn.disabled = false;
+  });
+}
+
+function focusPdfDelete(f) {
+  var ta = document.getElementById("focusMenuInput");
+  var inList = ta.value.indexOf("kocpdf:" + f.id) >= 0;
+  if (!confirm("\"" + f.title + "\" silinsin mi?" + (inList ? "\nListeden de çıkarılır; öğrencilerin görmesi için sonra Kaydet'e basman gerekir." : ""))) return;
+  var jobs = [];
+  for (var n = 0; n < Math.max(f.parts, 1); n++) jobs.push(focusPdfPartRef(f.id, n).delete());
+  Promise.all(jobs).then(function () { return focusPdfCol().doc(f.id).delete(); }).then(function () {
+    ta.value = ta.value.split("\n").filter(function (l) { return l.indexOf("kocpdf:" + f.id) < 0; }).join("\n");
+    focusPdfFiles = focusPdfFiles.filter(function (x) { return x.id !== f.id; });
+    focusRenderPreview();
+    focusPdfRender();
+    focusPdfNote("Silindi." + (inList ? " Listeyi kaydetmeyi unutma." : ""));
+  }).catch(function (err) { focusPdfNote("Silinemedi: " + ((err && err.message) || "bilinmeyen hata"), true); });
+}
+
 function wireCoachFocusEditor(coachUid) {
   var saveBtn = document.getElementById("focusSaveBtn");
   var note = document.getElementById("focusNote");
   if (!saveBtn) return;
   var ref = fbDb.collection("focusConfigs").doc(coachUid);
+  focusPdfCoach = coachUid;
   focusFillEditor({ blockedProcesses: FOCUS_DEFAULT_PROCS, sessionMinutes: [45, 90, 120] });
   ref.get().then(function (snap) {
     if (!snap.exists) return;
     var cfg;
     try { cfg = JSON.parse(snap.data().json); } catch (e) { return; }
     focusFillEditor(cfg);
-  }).catch(function () {});
+  }).catch(function () {}).then(focusPdfRefresh);
   if (focusEditorWired) return;
   focusEditorWired = true;
   document.getElementById("focusQuickAdd").addEventListener("click", focusQuickAdd);
+  document.getElementById("focusPdfBtn").addEventListener("click", focusPdfUploadAll);
+  document.getElementById("focusMenuInput").addEventListener("input", focusPdfRender);
   document.getElementById("focusMenuInput").addEventListener("input", focusRenderPreview);
   document.getElementById("focusQuickExam").addEventListener("change", focusPopulateDers);
   document.getElementById("focusQuickDers").addEventListener("change", focusPopulateKonu);

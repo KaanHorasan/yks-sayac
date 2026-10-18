@@ -642,6 +642,14 @@
         <button type="button" class="coach-plan-picker-add" id="focusQuickAdd">+ Ekle</button>
       </div>
       <p class="settings-note" id="focusQuickNote" style="margin: 4px 0 10px;"></p>
+      <p class="settings-note" style="margin: 0 0 4px;"><b>PDF yükle:</b> bilgisayarından bir ya da birden fazla PDF seç (her biri en çok 20 MB). Yukarıdaki ders ve konu seçimine eklenir; öğrencilerin çalışma tarayıcısında PDF görüntüleyicide açılır. Yüklenince listeye satır eklenir, yine de en alttaki <b>Kaydet</b>'e basmalısın.</p>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <input type="file" id="focusPdfFile" accept=".pdf,application/pdf" multiple style="flex: 1; min-width: 180px; font-size: 12px;">
+        <button type="button" class="coach-plan-picker-add" id="focusPdfBtn">📄 PDF yükle</button>
+      </div>
+      <p class="settings-note" id="focusPdfNote" style="margin: 4px 0 4px;"></p>
+      <div id="focusPdfList"></div>
+      <p class="settings-note" id="focusPdfUsage" style="margin: 2px 0 10px;"></p>
       <p class="settings-note" style="margin: 0 0 4px;">Tüm liste (başlıkları buradan düzenleyebilir, satır silebilirsin):</p>
       <textarea id="focusMenuInput" class="coach-quotes-textarea" rows="8" placeholder="Matematik | PKOB | Permütasyon giriş | https://www.youtube.com/watch?v=VIDEO_KODU&#10;Matematik | Khan Academy | https://www.khanacademy.org/"></textarea>
       <div id="focusPreview"></div>
