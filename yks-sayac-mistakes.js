@@ -210,8 +210,11 @@ function mistakeOpenImage(id) {
 }
 
 function mistakeApply(m, patch) {
+  // Şehir ödülü: ilk "çözüldü" ve başarılı tekrar (reviewStep >= 2) sayılır; yeniden açma / başarısız tekrar sayılmaz.
+  var cityKind = (patch.status === "solved") ? "solve" : ((typeof patch.reviewStep === "number" && patch.reviewStep >= 2) ? "review" : null);
   mistakeCol("errors").doc(m.id).update(patch).then(function () {
     Object.keys(patch).forEach(function (k) { m[k] = patch[k]; });
+    if (cityKind && typeof cityOnMistake === "function") cityOnMistake(cityKind);
     mistakeRender();
     mistakeSyncStats();
   }).catch(function () { showUpdateToast("Güncellenemedi, tekrar dener misin?"); });

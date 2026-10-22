@@ -151,6 +151,7 @@ function saveNewExamRecord() {
   };
   examState.records.push(record);
   saveExamRecords();
+  if (typeof cityOnExamSaved === "function") cityOnExamSaved(record, examState.records);
 
   if (note) {
     note.textContent = "Kaydedildi: " + EXAM_TEMPLATES[record.examKey].label + " · " + record.totalNet.toFixed(2) + " net";

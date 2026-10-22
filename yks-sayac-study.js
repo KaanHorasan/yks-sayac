@@ -40,8 +40,19 @@ function computeBaseStreak() {
     if (daysBack > STREAK_MAX_LOOKBACK_DAYS) return Promise.resolve(acc);
     var d = new Date();
     d.setDate(d.getDate() - daysBack);
-    return getStudyDaySeconds("study-" + dateStr(d), false).then(function (secs) {
-      if (secs >= STREAK_THRESHOLD_SECONDS) return walk(daysBack + 1, acc + 1);
+    var ds = dateStr(d);
+    return getStudyDaySeconds("study-" + ds, false).then(function (secs) {
+      if (secs >= STREAK_THRESHOLD_SECONDS || (typeof cityJokerProtects === "function" && cityJokerProtects(ds))) return walk(daysBack + 1, acc + 1);
+      // Dün eksikse ve seri kalkanı varsa otomatik kullan (yalnızca ondan önceki gün serinin parçasıysa).
+      if (daysBack === 1 && typeof cityJokerAvailable === "function" && cityJokerAvailable()) {
+        var dd = new Date();
+        dd.setDate(dd.getDate() - 2);
+        var dds = dateStr(dd);
+        return getStudyDaySeconds("study-" + dds, false).then(function (s2) {
+          if (s2 >= STREAK_THRESHOLD_SECONDS || cityJokerProtects(dds)) { cityJokerUse(ds); return walk(2, 1); }
+          return acc;
+        });
+      }
       return acc;
     });
   }
@@ -157,7 +168,10 @@ function updateStreakDisplay() {
     streakDateStr = todayStr;
     streakCelebratedForDate = null;
     streakDisplayedValue = null;
-    computeBaseStreak().then(pollTodayStreak);
+    streakBaseReady = false;
+    // Şehir (kalkan/protected günler) yüklenmeden seri hesaplanmasın.
+    var startStreak = function () { computeBaseStreak().then(function () { streakBaseReady = true; pollTodayStreak(); }); };
+    if (typeof cityWhenLoaded === "function") cityWhenLoaded(startStreak); else startStreak();
     return;
   }
   var nowMs = Date.now();
@@ -165,7 +179,9 @@ function updateStreakDisplay() {
   lastStreakPollTs = nowMs;
   pollTodayStreak();
 }
+var streakBaseReady = false;
 function pollTodayStreak() {
+  if (!streakBaseReady) return;
   getStudyDaySeconds(studyKey(), true).then(function (todaySeconds) {
     var qualifies = todaySeconds >= STREAK_THRESHOLD_SECONDS;
     var display = streakBase + (qualifies ? 1 : 0);
@@ -174,6 +190,8 @@ function pollTodayStreak() {
       renderStreakBadge(display);
     }
     maybeCelebrateStreak(display, qualifies);
+    if (typeof renderCityMeta === "function") renderCityMeta();
+    if (typeof cityCheckProgress === "function") cityCheckProgress();
   });
 }
 function elapsedRunningSeconds() {
@@ -203,6 +221,7 @@ function renderStudy() {
   updateStreakDisplay();
   updateFocusTick();
   accrueStudyGold();
+  if (typeof citySurpriseTick === "function") citySurpriseTick();
 }
 var pieColors = ["#e7a33e", "#8fae8b", "#6b8fae", "#c97064", "#b58fd9", "#d9b56b", "#7fbfae"];
 var pieRange = "day";
@@ -381,6 +400,7 @@ function toggleStudy() {
   var input = document.getElementById("stopwatchSubject");
   if (studyState.running) {
     var elapsed = elapsedRunningSeconds();
+    if (!focusModeActive && typeof citySessionSummary === "function") citySessionSummary(elapsed);
     studyState.subjects[studyState.activeSubject] = (studyState.subjects[studyState.activeSubject] || 0) + elapsed;
     studyState.running = false;
     studyState.startTs = null;

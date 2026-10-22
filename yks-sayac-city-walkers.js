@@ -12,7 +12,7 @@ var cityWalkerHues = [0, 145, 250, 320];
 var cityWalkerRaf = null;
 var cityWalkerLast = 0;
 // Girilemeyen yapılar (açık hava / anıt türleri)
-var CITY_NO_ENTER = { "Park": 1, "Bahçe": 1, "Çeşme": 1, "Anıt (tarihi)": 1, "Köprü": 1, "Antik Kalıntı (tarihi)": 1, "Zaman Kapsülü": 1 };
+var CITY_NO_ENTER = { "Bahçe": 1, "Zaman Kapsülü": 1 };
 function cityCanEnter(b) { return !!b && cityIsCounted(b) && !CITY_NO_ENTER[b.name]; }
 function cityWalkerNeighbors(cx, cy, map) {
   var out = [];

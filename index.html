@@ -210,6 +210,7 @@
         <div class="panel-title" style="margin-bottom: 0;">şehrim</div>
         <span class="city-stats" id="cityStats">0 bina · 0 altın</span>
       </div>
+      <div class="city-meta" id="cityMetaMain"></div>
       <div class="city-grid" id="cityGrid"></div>
       <p class="dash-empty" id="cityEmpty">Henüz hiç binan yok. Bir odak seansını hedefine ulaşana kadar tamamlayıp altın kazanınca market'ten bina satın alabilirsin!</p>
       <button type="button" class="city-open-btn" id="cityOpenBtn">Detaylı görünüm ve market →</button>
@@ -363,7 +364,8 @@
           <span class="city-view-stat-label">nüfus</span>
         </div>
       </div>
-      <p class="settings-note" style="margin: 10px 0 0;">Altın, tamamladığın odak seanslarından kazanılır: çalışılan saat × (seri + 20) / 20. Serin ne kadar uzunsa, saatlik kazancın o kadar yüksek olur.</p>
+      <div class="city-meta" id="cityMetaView" style="margin: 14px 0 0;"></div>
+      <p class="settings-note" style="margin: 10px 0 0;">Altın, çalıştığın süreden kazanılır: saat × (seri + 20) / 20; çarpan en çok ×3'tür (seri 40 günde tavana ulaşır). Odak modunda kazanç ×1,5 olur. Nüfusun arttıkça şehrin seviye atlar; her seviye bonus altın ve yeni yapılar getirir. Seri 7, 14, 30, 60 ve 100. günlerde rozet ve bonus altın kazandırır (14. ve 60. günde seri kalkanı da). Günlük 3 görevi bitirince sandık açılır; tamamlanan konular, çözülen/tekrar edilen hatalar ve deneme netindeki artış da altın verir. Kesintisiz çalışırken 25, 50 ve 90. dakikada sürpriz bonus gelir. Odak seansını yarıda bırakırsan ceza küçüktür ve 25 dakika çalışınca kalkar. Bir gün kaçırırsan seri kalkanı (20 altın) serini otomatik korur.</p>
     </div>
 
     <div class="dash-card">

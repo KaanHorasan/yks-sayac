@@ -202,7 +202,7 @@ function renderFocusModeBlock() {
         '. "Detaylı görünüm" üzerinden market\'ten bina satın alabilirsin.</p>';
     } else if (lastFocusSummary.outcome === "penalty") {
       extra = '<p class="focus-summary-text">😔 Hedefe ulaşmadan çıktın: <b>' + lastFocusSummary.coinsPenalty + ' altın</b> ceza ödedin' +
-        (lastFocusSummary.debuffApplied ? ' ve bir sonraki tamamlanan seansta kazancın <b>yarıya düşecek</b> (dikkat dağınıklığı).' : '.') +
+        (lastFocusSummary.debuffApplied ? ' ve bir sonraki tamamlanan seansta kazancın <b>yarıya düşecek</b> (dikkat dağınıklığı). 25 dakika kronometreyle çalışarak bunu kaldırabilirsin.' : '.') +
         '</p>';
     }
     block.innerHTML =
@@ -217,7 +217,7 @@ function renderFocusModeBlock() {
     });
   } else {
     var debuffWarning = (cityState.debuffSessionsLeft || 0) > 0
-      ? '<p class="focus-debuff-warning">⚠️ Dikkat dağınıklığı aktif — bir sonraki tamamlanan seansta altın kazancın yarıya düşecek.</p>'
+      ? '<p class="focus-debuff-warning">⚠️ Dikkat dağınıklığı aktif — bir sonraki tamamlanan seansta altın kazancın yarıya düşecek. 25 dakika kronometreyle çalışırsan ceza kalkar.</p>'
       : "";
     var bonusHint = '<p class="focus-bonus-hint">💡 Odak modu normal kronometreye göre <b>1.5x</b> altın verir.</p>';
     block.innerHTML = debuffWarning + bonusHint + '<div class="focus-duration-row">' +
@@ -400,13 +400,15 @@ function exitFocusMode(showSummary, completed) {
       cityState.debuffSessionsLeft = Math.max(0, (cityState.debuffSessionsLeft || 0) - 1);
     }
     cityState.coins = roundCoins((cityState.coins || 0) + coinsEarned);
+    if (typeof cityQuestsEnsure === "function") cityQuestsEnsure().p.focus++;   // günlük görev: odak seansı
     saveCity();
     playFocusTone("complete");
   } else {
     var potentialReward = roundCoins(computeFocusReward(focusTargetMinutes * 60000) * FOCUS_REWARD_MULTIPLIER);
-    coinsPenalty = roundCoins(potentialReward * 0.5);
+    coinsPenalty = roundCoins(potentialReward * 0.25);   // yumuşatıldı: eskiden %50
     cityState.coins = roundCoins(Math.max(0, (cityState.coins || 0) - coinsPenalty));
     cityState.debuffSessionsLeft = 1;
+    cityState.debuffRecoveryMs = 0;   // 25 dk normal çalışma bu cezayı kaldırır (accrueStudyGold)
     debuffApplied = true;
     saveCity();
   }

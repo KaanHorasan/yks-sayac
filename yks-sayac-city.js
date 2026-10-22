@@ -14,12 +14,398 @@ function loadCity() {
         if (parsed && Array.isArray(parsed.buildings)) {
           if (typeof parsed.coins !== "number") parsed.coins = 0;
           if (typeof parsed.debuffSessionsLeft !== "number") parsed.debuffSessionsLeft = 0;
-          return normalizeCityLayout(parsed);
+          return normalizeCityLayout(cityMigrateRemoved(parsed));
         }
       } catch (e) {}
     }
     return { buildings: [], coins: 0, debuffSessionsLeft: 0 };
   });
+}
+// Depodan yükleme tamamlanmadan ilerleme (seviye/rozet) ödülü verilmez: boş varsayılan durum gerçek şehrin üzerine yazılmasın.
+var cityLoadedOnce = false;
+var loadCityRaw = loadCity;
+loadCity = function () {
+  return loadCityRaw().then(function (state) { cityLoadedOnce = true; return state; });
+};
+// ---- Şehir seviyeleri (nüfusa göre), seri rozetleri, hedef bina ----
+var CITY_LEVELS = [
+  { name: "Köy", emoji: "🏡", pop: 0, bonus: 0 },
+  { name: "Kasaba", emoji: "🏘️", pop: 80, bonus: 10 },
+  { name: "Şehir", emoji: "🏙️", pop: 300, bonus: 30 },
+  { name: "Metropol", emoji: "🌆", pop: 800, bonus: 80 },
+  { name: "Megakent", emoji: "🌃", pop: 1800, bonus: 150 }
+];
+var CITY_STREAK_MILESTONES = [
+  { days: 7, bonus: 10 }, { days: 14, bonus: 25, joker: true }, { days: 30, bonus: 60 }, { days: 60, bonus: 150, joker: true }, { days: 100, bonus: 300 }
+];
+// ---- Aşama 2: günlük görevler, süre dışı ödüller, seri kalkanı, yumuşak ceza, anlık geri bildirim ----
+// Tüm ödül sayıları tek yerde (ekonomiyi dengelemek için buradan ayarla).
+var CITY_REWARDS = {
+  topic: 0.3, topicCap: 4,                 // tamamlanan konu başına altın, günlük en çok kaç konu
+  review: 0.1, reviewCap: 10,              // hata çözümü / başarılı tekrar başına altın, günlük sınır
+  examFirst: 1, examPerNet: 0.5, examMax: 6, examRecord: 2,   // deneme: ilk kayıt, net artışı başına, tavan, kişisel rekor
+  jokerCost: 20, jokerMax: 2,              // seri kalkanı fiyatı ve en çok kaç tane
+  debuffRecoveryMin: 25,                   // odak cezası bu kadar dakika çalışınca kalkar
+  surprise: [ { min: 25, lo: 0.2, hi: 0.5 }, { min: 50, lo: 0.4, hi: 0.8 }, { min: 90, lo: 0.8, hi: 1.6 } ],  // kesintisiz çalışma sürprizleri
+  chest: { lo: 1, hi: 3, jackpot: 5, jackpotChance: 0.15 }
+};
+var CITY_QUEST_POOL = [
+  { id: "study60", kind: "study", need: 60, text: "60 dk çalış", reward: 0.5 },
+  { id: "study120", kind: "study", need: 120, text: "120 dk çalış", reward: 1 },
+  { id: "focus1", kind: "focus", need: 1, text: "1 odak seansını tamamla", reward: 1 },
+  { id: "mistake3", kind: "mistake", need: 3, text: "3 hatayı çöz / tekrar et", reward: 0.5 },
+  { id: "topic2", kind: "topic", need: 2, text: "2 konuyu tamamla", reward: 0.5 }
+];
+var citySessionGold = 0;
+function cityFmtGold(g) { return String(roundCoins(g)).replace(".", ","); }
+function cityHash(str) { var h = 7; for (var i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0; return h; }
+function cityQuestDef(id) { return CITY_QUEST_POOL.filter(function (q) { return q.id === id; })[0]; }
+function cityPickQuests(dateKey) {   // her gün 3 görev: 1 çalışma süresi + (odak / hata / konu) içinden 2'si; aynı gün her cihazda aynı
+  var h = cityHash(dateKey), others = ["focus1", "mistake3", "topic2"];
+  others.splice(h % 3, 1);
+  return [(h % 2) ? "study120" : "study60"].concat(others);
+}
+function cityQuestsEnsure() {
+  var today = dateStr(new Date());
+  if (!cityState.quests || cityState.quests.date !== today) {
+    cityState.quests = { date: today, ids: cityPickQuests(today), done: {}, p: { focus: 0, mistake: 0 }, chest: null };
+  }
+  return cityState.quests;
+}
+function cityDailyEnsure() {
+  var today = dateStr(new Date());
+  if (!cityState.daily || cityState.daily.date !== today) cityState.daily = { date: today, topics: 0, reviews: 0, exam: false, paid: {} };
+  return cityState.daily;
+}
+function cityTodayStudySeconds() {
+  var t = 0, subs = (typeof studyState !== "undefined" && studyState.subjects) || {};
+  Object.keys(subs).forEach(function (k) { t += subs[k] || 0; });
+  return t + (typeof elapsedRunningSeconds === "function" ? elapsedRunningSeconds() : 0);
+}
+function cityQuestProgress(def) {
+  var qs = cityQuestsEnsure();
+  if (def.kind === "study") return Math.floor(cityTodayStudySeconds() / 60);
+  if (def.kind === "focus") return qs.p.focus || 0;
+  if (def.kind === "mistake") return qs.p.mistake || 0;
+  if (def.kind === "topic") return (typeof todayTopics !== "undefined" ? todayTopics : []).filter(function (t) { return t.done; }).length;
+  return 0;
+}
+// Küçük "+0,1 🪙" uçuşu: altın kazanıldığını anında hissettirir.
+function cityFloat(text) {
+  if (typeof document === "undefined" || !document.body) return;
+  var anchor = document.querySelector(".stopwatch-card") || document.getElementById("cityStats");
+  var el = document.createElement("div");
+  el.className = "city-float";
+  el.textContent = text;
+  var r = anchor && anchor.offsetParent !== null ? anchor.getBoundingClientRect() : null;
+  el.style.left = (r ? r.left + r.width / 2 : window.innerWidth / 2) + "px";
+  el.style.top = (r ? r.top + 12 : 90) + "px";
+  document.body.appendChild(el);
+  setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 2200);
+}
+function cityAward(gold, quiet) {
+  if (!cityLoadedOnce || !(gold > 0)) return;
+  cityState.coins = roundCoins((cityState.coins || 0) + gold);
+  saveCity();
+  renderCity();
+  if (!quiet) cityFloat("+" + cityFmtGold(gold) + " 🪙");
+}
+function cityQuestTick() {
+  var out = { changed: false, msgs: [] };
+  var qs = cityQuestsEnsure();
+  qs.ids.forEach(function (id) {
+    if (qs.done[id]) return;
+    var def = cityQuestDef(id);
+    if (def && cityQuestProgress(def) >= def.need) {
+      qs.done[id] = true;
+      cityState.coins = roundCoins((cityState.coins || 0) + def.reward);
+      out.msgs.push("✅ Görev tamam: " + def.text + " (+" + cityFmtGold(def.reward) + " altın)");
+      out.changed = true;
+    }
+  });
+  if (!qs.chest && qs.ids.every(function (id) { return qs.done[id]; })) {
+    qs.chest = { state: "ready" };
+    out.msgs.push("🎁 Günlük sandık hazır!");
+    out.changed = true;
+  }
+  return out;
+}
+function cityOpenChest() {
+  var qs = cityQuestsEnsure();
+  if (!cityLoadedOnce || !qs.chest || qs.chest.state !== "ready") return;
+  var C = CITY_REWARDS.chest, jackpot = Math.random() < C.jackpotChance;
+  var gold = jackpot ? C.jackpot : C.lo + Math.floor(Math.random() * (C.hi - C.lo + 1));
+  qs.chest = { state: "opened", gold: gold };
+  cityState.coins = roundCoins((cityState.coins || 0) + gold);
+  saveCity();
+  renderCity();
+  renderCityViewAll();
+  cityCelebrate([jackpot ? "💎 Büyük ödül! Sandıktan " + gold + " altın çıktı" : "🎁 Sandıktan " + gold + " altın çıktı"]);
+}
+// Konu tamamlama: bugünkü tamamlanan her konu bir kez ödenir (tik atıp kaldırmak tekrar ödemez), günlük sınırlı.
+function cityScanTopics() {
+  if (!cityLoadedOnce || typeof todayTopics === "undefined") return;
+  var d = cityDailyEnsure(), gold = 0;
+  todayTopics.forEach(function (t) {
+    if (!t.done || d.paid[t.id]) return;
+    d.paid[t.id] = true;
+    if (d.topics < CITY_REWARDS.topicCap) { d.topics++; gold += CITY_REWARDS.topic; }
+  });
+  if (gold > 0) { cityAward(gold); }
+}
+// Hata arşivi: ilk "çözüldü" ve her başarılı tekrar (SRS aralıklı olduğu için tekrar tekrar kasılamaz) + günlük sınır.
+function cityOnMistake(kind) {
+  if (!cityLoadedOnce) return;
+  cityQuestsEnsure().p.mistake++;
+  var d = cityDailyEnsure();
+  if (d.reviews < CITY_REWARDS.reviewCap) { d.reviews++; cityAward(CITY_REWARDS.review); } else { saveCity(); }
+  cityCheckProgress();
+}
+// Deneme: ilk kayıt, önceki denemeye göre net artışı ve kişisel rekor ödüllendirilir; günde en çok bir kez.
+function cityOnExamSaved(record, all) {
+  if (!cityLoadedOnce) return;
+  var d = cityDailyEnsure();
+  if (d.exam) return;
+  var R = CITY_REWARDS, gold = 0;
+  var prev = (all || []).filter(function (r) { return r.id !== record.id && r.examKey === record.examKey; });
+  if (!prev.length) {
+    gold = R.examFirst;
+  } else {
+    prev.sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
+    var last = prev[prev.length - 1];
+    var best = Math.max.apply(null, prev.map(function (r) { return r.totalNet; }));
+    var delta = record.totalNet - last.totalNet;
+    if (delta > 0) gold += Math.min(R.examMax, Math.round(delta * R.examPerNet * 10) / 10);
+    if (record.totalNet > best) gold += R.examRecord;
+  }
+  if (gold > 0) {
+    d.exam = true;
+    cityAward(gold, true);
+    cityCelebrate(["📈 Deneme ödülü: +" + cityFmtGold(gold) + " altın"]);
+  }
+}
+// Seri kalkanı: dün hedef tutmadıysa ve ondan önceki gün seriye dahilse otomatik kullanılır (computeBaseStreak çağırır).
+function cityJokerAvailable() { return cityLoadedOnce && (cityState.jokers || 0) > 0; }
+function cityJokerProtects(ds) { return (cityState.jokerDays || []).indexOf(ds) >= 0; }
+function cityJokerUse(ds) {
+  cityState.jokers = Math.max(0, (cityState.jokers || 0) - 1);
+  cityState.jokerDays = (cityState.jokerDays || []).concat(ds).slice(-60);
+  saveCity();
+  renderCityViewAll();
+  cityCelebrate(["🛡️ Seri kalkanı dün için kullanıldı, serin korundu!"]);
+}
+function cityBuyJoker() {
+  var R = CITY_REWARDS;
+  if (!cityLoadedOnce || (cityState.jokers || 0) >= R.jokerMax || (cityState.coins || 0) < R.jokerCost) return;
+  cityState.coins = roundCoins(cityState.coins - R.jokerCost);
+  cityState.jokers = (cityState.jokers || 0) + 1;
+  saveCity();
+  renderCity();
+  renderCityViewAll();
+  cityCelebrate(["🛡️ Seri kalkanı alındı (" + cityState.jokers + "/" + R.jokerMax + ")"]);
+}
+function cityWhenLoaded(cb, tries) {
+  if (cityLoadedOnce || (tries || 0) > 50) { cb(); return; }
+  setTimeout(function () { cityWhenLoaded(cb, (tries || 0) + 1); }, 200);
+}
+// Kesintisiz çalışma sürprizleri (25 / 50 / 90. dakika); aynı oturum için bir kez (sayfa yenilense de).
+function citySurpriseTick() {
+  if (!cityLoadedOnce || typeof studyState === "undefined") return;
+  if (!studyState.running || !studyState.startTs) return;
+  var sp = cityState.surprise;
+  if (!sp || sp.startTs !== studyState.startTs) sp = cityState.surprise = { startTs: studyState.startTs, given: {} };
+  var mins = (Date.now() - studyState.startTs) / 60000;
+  CITY_REWARDS.surprise.forEach(function (s) {
+    if (mins >= s.min && !sp.given[s.min]) {
+      sp.given[s.min] = true;
+      var g = Math.round((s.lo + Math.random() * (s.hi - s.lo)) * 10) / 10;
+      citySessionGold += g;
+      cityAward(g, true);
+      cityCelebrate(["🎁 " + s.min + " dakikadır kesintisiz çalışıyorsun: +" + cityFmtGold(g) + " altın"]);
+    }
+  });
+}
+function citySessionSummary(elapsedSec) {
+  var gold = citySessionGold;
+  citySessionGold = 0;
+  if (elapsedSec < 120 || typeof showUpdateToast !== "function") return;
+  var parts = ["⏱️ Bu seans: " + cityFmtDuration(elapsedSec / 3600)];
+  if (gold > 0) parts.push("+" + cityFmtGold(gold) + " altın");
+  var tt = cityLoadedOnce ? cityTargetType() : null;
+  if (tt) {
+    var rem = Math.max(0, tt.cost - (cityState.coins || 0));
+    parts.push(rem <= 0 ? "🎯 " + tt.name + " için altının hazır!" : "🎯 " + tt.name + ": ≈ " + cityFmtDuration(rem / cityStreakMultiplier()) + " kaldı");
+  }
+  showUpdateToast(parts.join(" · "));
+}
+function cityLevelFromPop(pop) {
+  var lv = 0;
+  for (var i = 0; i < CITY_LEVELS.length; i++) if (pop >= CITY_LEVELS[i].pop) lv = i;
+  return lv;
+}
+// Açılan en yüksek seviye: nüfus sonradan düşse bile (yapı satılsa) kilitler geri kapanmaz.
+function cityLevelIndex() { return Math.max(cityState.levelClaimed || 0, cityLevelFromPop(cityPopulation())); }
+function cityTypeLocked(type) { return (type.minLevel || 0) > cityLevelIndex(); }
+function cityTargetType() {
+  var name = cityState.target;
+  if (!name) return null;
+  var t = BUILDING_TYPES.filter(function (x) { return x.name === name; })[0];
+  return (t && !t.road && !cityTypeLocked(t)) ? t : null;
+}
+function citySetTarget(name) {
+  cityState.target = (cityState.target === name) ? null : name;
+  saveCity();
+  renderCityViewAll();
+}
+function cityCelebrate(msgs) {
+  if (!msgs.length) return;
+  if (typeof showUpdateToast === "function") showUpdateToast(msgs.join("   ·   "));
+  if (typeof triggerCelebrationMessage !== "function") return;
+  var seen = [];
+  ["cityStats", "pixelCityScene"].forEach(function (id) {
+    var el = document.getElementById(id);
+    var card = el && el.closest ? el.closest(".dash-card") : null;
+    if (card && card.offsetParent !== null && seen.indexOf(card) < 0) { seen.push(card); triggerCelebrationMessage(card, msgs[0]); }
+  });
+}
+// Seviye atlama ve seri rozeti ödülleri: her biri bir kez verilir (levelClaimed / streakClaimed, geri düşmez).
+function cityCheckProgress() {
+  if (!cityLoadedOnce) return;
+  var msgs = [], changed = false;
+  var lv = cityLevelFromPop(cityPopulation());
+  var claimed = cityState.levelClaimed || 0;
+  if (lv > claimed) {
+    var bonus = 0;
+    for (var i = claimed + 1; i <= lv; i++) bonus += CITY_LEVELS[i].bonus;
+    cityState.levelClaimed = lv;
+    cityState.coins = roundCoins((cityState.coins || 0) + bonus);
+    msgs.push(CITY_LEVELS[lv].emoji + " Şehrin " + CITY_LEVELS[lv].name + " oldu! +" + bonus + " altın");
+    changed = true;
+  }
+  if (typeof streakDisplayedValue === "number") {
+    var sc = cityState.streakClaimed || 0, sBonus = 0, sTop = 0, jokerGain = 0;
+    CITY_STREAK_MILESTONES.forEach(function (m) {
+      if (streakDisplayedValue >= m.days && m.days > sc) { sBonus += m.bonus; sTop = m.days; if (m.joker) jokerGain++; }
+    });
+    if (sTop) {
+      cityState.streakClaimed = sTop;
+      cityState.coins = roundCoins((cityState.coins || 0) + sBonus);
+      msgs.push("🏅 " + sTop + " günlük seri rozeti! +" + sBonus + " altın");
+      if (jokerGain) {
+        cityState.jokers = Math.min(CITY_REWARDS.jokerMax, (cityState.jokers || 0) + jokerGain);
+        msgs.push("🛡️ Seri kalkanı kazandın!");
+      }
+      changed = true;
+    }
+  }
+  var q = cityQuestTick();
+  if (q.changed) { changed = true; msgs = msgs.concat(q.msgs); }
+  cityScanTopics();
+  if (changed) {
+    saveCity();
+    renderCity();
+    if (typeof renderCityViewAll === "function") renderCityViewAll();
+    cityCelebrate(msgs);
+  }
+}
+function cityFmtDuration(h) {
+  if (!isFinite(h)) return "—";
+  var total = Math.ceil(h * 60);
+  if (total < 60) return total + " dk";
+  var hh = Math.floor(total / 60), mm = total % 60;
+  return hh + " sa" + (mm ? " " + mm + " dk" : "");
+}
+function cityMetaRow(top, side, pct, ready, extra) {
+  return '<div class="city-meta-row"><div class="city-meta-top"><b>' + top + '</b><span>' + side + (extra || "") + '</span></div>' +
+    '<div class="city-bar' + (ready ? " is-ready" : "") + '"><i style="width:' + pct + '%"></i></div></div>';
+}
+function cityQuestsHtml(full) {
+  var qs = cityQuestsEnsure();
+  var doneN = qs.ids.filter(function (id) { return qs.done[id]; }).length;
+  var chestBtn = (qs.chest && qs.chest.state === "ready") ? ' <button type="button" class="city-meta-btn" data-act="open-chest">🎁 Sandığı aç</button>' : "";
+  if (!full) return cityMetaRow("📋 Günlük görevler", doneN + "/" + qs.ids.length, Math.round(doneN / qs.ids.length * 100), doneN === qs.ids.length, chestBtn);
+  var html = '<div class="city-meta-row"><div class="city-meta-top"><b>📋 Günlük görevler</b><span>' + doneN + "/" + qs.ids.length + chestBtn + '</span></div><ul class="city-quest-list">';
+  qs.ids.forEach(function (id) {
+    var def = cityQuestDef(id), done = !!qs.done[id];
+    var p = Math.min(def.need, cityQuestProgress(def));
+    html += '<li class="' + (done ? "is-done" : "") + '"><span>' + (done ? "✅" : "▫️") + " " + def.text + "</span><i>" + p + "/" + def.need + (def.kind === "study" ? " dk" : "") + "</i><em>+" + cityFmtGold(def.reward) + "</em></li>";
+  });
+  html += "</ul>";
+  if (!qs.chest) html += '<div class="city-meta-hint">🎁 Üç görevi de bitirince günlük sandık açılır (1-3 altın, ara sıra büyük ödül).</div>';
+  else if (qs.chest.state === "opened") html += '<div class="city-meta-hint">🎁 Sandık açıldı: +' + qs.chest.gold + " altın</div>";
+  return html + "</div>";
+}
+function renderCityMeta() {
+  var boxes = ["cityMetaMain", "cityMetaView"].map(function (id) { return document.getElementById(id); }).filter(Boolean);
+  if (!boxes.length) return;
+  var pop = cityPopulation(), lv = cityLevelIndex();
+  var L = CITY_LEVELS[lv], N = CITY_LEVELS[lv + 1];
+  var coins = cityState.coins || 0, R = CITY_REWARDS;
+  boxes.forEach(function (box) {
+    var full = box.id === "cityMetaView";
+    var html = "";
+    var pct = N ? Math.max(0, Math.min(100, Math.round((pop - L.pop) / (N.pop - L.pop) * 100))) : 100;
+    html += cityMetaRow(L.emoji + " " + L.name, N ? (pop + " / " + N.pop + " nüfus · sonraki: " + N.name + " (+" + N.bonus + " altın)") : (pop + " nüfus · en üst seviye"), pct, !N);
+    var tt = cityTargetType();
+    if (tt) {
+      var rem = Math.max(0, tt.cost - coins), rate = cityStreakMultiplier();
+      var ready = rem <= 0;
+      var info = ready ? "✅ hazır — marketten satın alabilirsin"
+        : roundCoins(coins) + " / " + tt.cost + " altın · ≈ " + cityFmtDuration(rem / rate) + " (odakta ≈ " + cityFmtDuration(rem / (rate * 1.5)) + ")";
+      html += cityMetaRow("🎯 " + tt.name, info, Math.min(100, Math.round(coins / tt.cost * 100)), ready,
+        ' <button type="button" class="city-meta-x" data-act="clear-target" title="Hedefi kaldır">✕</button>');
+    } else if (full) {
+      html += '<div class="city-meta-hint">🎯 Marketten bir yapıyı <b>hedef</b> seç; çalıştıkça ne kadar kaldığını burada görürsün.</div>';
+    }
+    if ((cityState.debuffSessionsLeft || 0) > 0) {
+      var rec = Math.min(R.debuffRecoveryMin, Math.floor((cityState.debuffRecoveryMs || 0) / 60000));
+      html += cityMetaRow("⚠️ Odak cezası", "sonraki ödüllü odak seansı yarım · " + R.debuffRecoveryMin + " dk çalışınca kalkar (" + rec + "/" + R.debuffRecoveryMin + ")", Math.round(rec / R.debuffRecoveryMin * 100), false);
+    }
+    html += cityQuestsHtml(full);
+    if (typeof streakDisplayedValue === "number" && full) {
+      var sv = streakDisplayedValue, mult = cityStreakMultiplier();
+      var next = CITY_STREAK_MILESTONES.filter(function (m) { return m.days > sv; })[0];
+      var got = CITY_STREAK_MILESTONES.filter(function (m) { return m.days <= (cityState.streakClaimed || 0); }).map(function (m) { return m.days; });
+      html += '<div class="city-meta-hint">🔥 Seri ' + sv + ' · altın ×' + mult.toFixed(2).replace(".", ",") +
+        (mult < CITY_STREAK_MULT_MAX ? " (tavan ×" + CITY_STREAK_MULT_MAX + " için " + Math.max(0, Math.ceil((CITY_STREAK_MULT_MAX * 20 - 20) - sv)) + " gün)" : " (tavan)") +
+        (next ? " · sıradaki rozet: " + next.days + ". gün (+" + next.bonus + " altın" + (next.joker ? " + seri kalkanı" : "") + ")" : "") +
+        (got.length ? " · 🏅 " + got.join(" · ") + " gün" : "") + '</div>';
+    }
+    if (full) {
+      var jk = cityState.jokers || 0;
+      html += '<div class="city-meta-row"><div class="city-meta-top"><b>🛡️ Seri kalkanı</b><span>' + jk + "/" + R.jokerMax +
+        " · bir gün kaçırırsan serin otomatik korunur " +
+        '<button type="button" class="city-meta-btn" data-act="buy-joker"' + ((jk >= R.jokerMax || coins < R.jokerCost) ? " disabled" : "") + ">Al · " + R.jokerCost + " altın</button></span></div></div>";
+    }
+    if (box._last !== html) { box.innerHTML = html; box._last = html; }   // değişmediyse yeniden çizme (basılan düğme kaybolmasın)
+    if (!box._wired) {
+      box._wired = true;
+      box.addEventListener("click", function (e) {
+        var t = e.target, act = t && t.getAttribute ? t.getAttribute("data-act") : null;
+        if (act === "clear-target") { cityState.target = null; saveCity(); renderCityViewAll(); }
+        else if (act === "open-chest") cityOpenChest();
+        else if (act === "buy-joker") cityBuyJoker();
+      });
+    }
+  });
+}
+// Kaldırılan (koddan çizilmiş) yapılar eski kayıtlarda kalmasın: silinir, maliyetin tamamı iade edilir.
+function cityMigrateRemoved(state) {
+  var refund = 0, count = 0;
+  state.buildings = state.buildings.filter(function (b) {
+    var cost = (typeof CITY_REMOVED_TYPES !== "undefined") ? CITY_REMOVED_TYPES[b.name] : undefined;
+    if (typeof cost !== "number") return true;
+    refund += cost;
+    count++;
+    return false;
+  });
+  if (count > 0) {
+    state.coins = roundCoins((state.coins || 0) + refund);
+    storageSet(cityKey(), JSON.stringify(state));
+    var msg = "Şehir güncellendi: eski görselli " + count + " yapı kaldırıldı, " + roundCoins(refund) + " altın iade edildi.";
+    setTimeout(function () { if (typeof showUpdateToast === "function") showUpdateToast(msg); }, 2500);
+  }
+  return state;
 }
 function saveCity() {
   return storageSet(cityKey(), JSON.stringify(cityState));
@@ -27,11 +413,15 @@ function saveCity() {
 function roundCoins(n) {
   return Math.round(n * 10) / 10;
 }
+// Seri çarpanı: (seri + 20) / 20, en çok CITY_STREAK_MULT_MAX (seri 40 günde ×3'e ulaşır, sonrası sabit).
+var CITY_STREAK_MULT_MAX = 3;
+function cityStreakMultiplier() {
+  var streakValue = (typeof streakDisplayedValue === "number") ? streakDisplayedValue : 0;
+  return Math.min(CITY_STREAK_MULT_MAX, (streakValue + 20) / 20);
+}
 function computeFocusReward(elapsedMs) {
   var hours = elapsedMs / 3600000;
-  var streakValue = (typeof streakDisplayedValue === "number") ? streakDisplayedValue : 0;
-  var multiplier = (streakValue + 20) / 20;
-  return roundCoins(hours * multiplier);
+  return roundCoins(hours * cityStreakMultiplier());
 }
 // Normal kronometre (odak modu DIŞINDA) çalışırken de altın kazandırır — odak modu
 // ile aynı taban orandan (1x), odak modunun FOCUS_REWARD_MULTIPLIER (1.5x) bonusu yok.
@@ -45,28 +435,38 @@ function accrueStudyGold() {
   if (elapsedMs <= 0) return;
   lastGoldAccrualTs = now;
   var hours = elapsedMs / 3600000;
-  var streakValue = (typeof streakDisplayedValue === "number") ? streakDisplayedValue : 0;
-  var multiplier = (streakValue + 20) / 20;
-  pendingStudyGold += hours * multiplier;
+  pendingStudyGold += hours * cityStreakMultiplier();
+  // Yumuşak ceza: odak bozulduktan sonra normal kronometreyle 25 dk çalışmak cezayı kaldırır.
+  var recovered = false;
+  if (cityLoadedOnce && (cityState.debuffSessionsLeft || 0) > 0) {
+    cityState.debuffRecoveryMs = (cityState.debuffRecoveryMs || 0) + elapsedMs;
+    if (cityState.debuffRecoveryMs >= CITY_REWARDS.debuffRecoveryMin * 60000) {
+      cityState.debuffSessionsLeft = 0;
+      cityState.debuffRecoveryMs = 0;
+      recovered = true;
+    }
+  }
   if (pendingStudyGold >= 0.1) {
     var toAdd = Math.floor(pendingStudyGold * 10) / 10;
     pendingStudyGold -= toAdd;
+    citySessionGold += toAdd;
     cityState.coins = roundCoins((cityState.coins || 0) + toAdd);
     saveCity();
     renderCity();
+    cityFloat("+" + cityFmtGold(toAdd) + " 🪙");
+  } else if (recovered) {
+    saveCity();
+    renderCity();
   }
+  if (recovered) cityCelebrate(["💪 Toparlandın: odak cezası kalktı"]);
 }
 // ---- Şehir yerleşimi: 14x5 ızgara, derinlik, yol/dekor ----
 var CITY_COLS = 14, CITY_ROWS = 5;
 var CITY_SELL_RATIO = 0.8; // yapı silinince maliyetin bu kadarı iade edilir
 var CITY_LOOK = {
-  "Çiftlik": { span: 2, hs: 1.3 }, "Okul": { span: 2, hs: 1.3 }, "Lunapark": { span: 2, hs: 1.4 },
-  "Kale": { span: 2, hs: 1.4 }, "Saray": { span: 2, hs: 1.45 }, "Köprü": { span: 2, hs: 0.9 },
-  "Ofis": { hs: 1.35 }, "Tarihi Kule": { hs: 1.3 }, "Anıt (tarihi)": { hs: 1.15 },
-  "Çeşme": { hs: 0.95 }, "Gizemli İstasyon": { hs: 1.1 },
-  "Çam Ağacı": { hs: 1.05 },
-  "Plaza": { span: 2 },
-  "Çiçeklik": { hs: 0.38 }, "Tabela": { hs: 0.72 }, "Otobüs Durağı": { hs: 0.9 }
+  "Çiftlik": { span: 2, hs: 1.3 }, "Okul": { span: 2, hs: 1.3 },
+  "Tarihi Kule": { hs: 1.3 }, "Gizemli İstasyon": { hs: 1.1 },
+  "Plaza": { span: 2 }
 };
 function cityTypeOf(b) { return BUILDING_TYPES.filter(function (t) { return t.name === b.name; })[0] || null; }
 function cityItemSpan(b) { var l = CITY_LOOK[b.name]; return (l && l.span) || 1; }
@@ -192,8 +592,12 @@ function cityActiveItem() {
   return null;
 }
 function buyBuilding(type) {
-  if (cityActiveItem() || (cityState.coins || 0) < type.cost) return;
+  if (cityActiveItem() || (cityState.coins || 0) < type.cost || cityTypeLocked(type)) return;
   cityState.coins = roundCoins((cityState.coins || 0) - type.cost);
+  if (cityState.target === type.name) {
+    cityState.target = null;
+    cityCelebrate(["🎯 Hedefine ulaştın: " + type.name + "!"]);
+  }
   saveCity();
   var building = {
     id: "b" + Date.now() + Math.random().toString(36).slice(2, 6),
@@ -286,6 +690,8 @@ function renderCity() {
   if (stats) {
     stats.textContent = cityBuildingCount() + " bina · " + (cityState.coins || 0) + " altın · " + cityPopulation() + " nüfus";
   }
+  renderCityMeta();
+  cityCheckProgress();
 }
 function renderMarket() {
   var grid = document.getElementById("cityMarketGrid");
@@ -299,7 +705,9 @@ function renderMarket() {
   grid.innerHTML = "";
   var busy = !!cityActiveItem();
   BUILDING_TYPES.filter(function (t) { return (t.tab || t.cat || "bina") === cityMarketTab; }).forEach(function (type) {
-    var canAfford = !busy && (cityState.coins || 0) >= type.cost;
+    var locked = cityTypeLocked(type);
+    var canAfford = !busy && !locked && (cityState.coins || 0) >= type.cost;
+    var isTarget = cityState.target === type.name;
     var animPreview = "";
     if (type.anim && BUILDING_IMAGES[type.anim.key]) {
       var sc = Math.min(40 / type.anim.h, 56 / type.anim.w);
@@ -312,18 +720,22 @@ function renderMarket() {
       ? roadTileSvg(10)
       : (type.images && type.images.length
         ? '<img src="' + BUILDING_IMAGES[type.images[0]] + '" alt="' + type.name + '">'
-        : (type.sprite ? buildProceduralSvg(type.sprite.shape, type.sprite.w, type.sprite.h, type.sprite.colors) : type.emoji));
+        : type.emoji);
     var item = document.createElement("div");
-    item.className = "city-market-item";
+    item.className = "city-market-item" + (locked ? " is-locked" : "");
     item.innerHTML =
       '<div class="city-market-emoji">' + preview + '</div>' +
       '<div class="city-market-name">' + type.name + '</div>' +
       '<div class="city-market-cost">' + type.cost + ' altın · ' + ((type.population || 0) > 0 ? '+' + type.population + ' nüfus' : 'süs') + '</div>' +
+      (locked ? '<div class="city-market-lock">🔒 ' + CITY_LEVELS[type.minLevel].name + ' seviyesinde açılır (' + CITY_LEVELS[type.minLevel].pop + ' nüfus)</div>' : "") +
       '<button type="button" class="city-market-buy-btn"' + (canAfford ? "" : " disabled") +
-      (busy ? ' title="Önce elindeki yapıyı yerleştir"' : "") + '>Satın Al</button>';
+      (busy ? ' title="Önce elindeki yapıyı yerleştir"' : (locked ? ' title="Şehir seviyesi yetmiyor"' : "")) + '>Satın Al</button>' +
+      (type.road || locked ? "" : '<button type="button" class="city-market-target-btn' + (isTarget ? " is-target" : "") + '">' + (isTarget ? "🎯 hedefin ✓" : "🎯 hedef yap") + '</button>');
     item.querySelector(".city-market-buy-btn").addEventListener("click", function () {
       buyBuilding(type);
     });
+    var tgBtn = item.querySelector(".city-market-target-btn");
+    if (tgBtn) tgBtn.addEventListener("click", function () { citySetTarget(type.name); });
     grid.appendChild(item);
   });
 }
@@ -334,10 +746,11 @@ function renderCityViewStats() {
   if (coinEl) coinEl.textContent = (cityState.coins || 0);
   if (countEl) countEl.textContent = cityBuildingCount();
   if (popEl) popEl.textContent = cityPopulation();
+  renderCityMeta();
 }
 function cityItemSprite(b) {
   var wrap = document.createElement("div");
-  wrap.className = "pcs-sprite" + (b.flip ? " is-flipped" : "");
+  wrap.className = "pcs-sprite" + (b.flip ? " is-flipped" : "") + (b.name === "Tabela" ? " pcs-sign-board" : "");
   wrap.innerHTML = buildingVisualMarkup(b);
   if (b.name === "Tabela") {
     var lab = document.createElement("span");
@@ -548,6 +961,7 @@ function renderCityViewAll() {
   renderMarket();
   renderPixelCityScene();
   renderCityViewStats();
+  cityCheckProgress();
 }
 function initCityView() {
   var dateEl = document.getElementById("cityViewDate");
