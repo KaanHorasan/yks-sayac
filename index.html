@@ -16,6 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="yks-sayac.css">
+<script type="importmap">{"imports":{"three":"./vendor/three/three.module.js"}}</script>
 
 </head>
 <body>
@@ -365,13 +366,19 @@
         </div>
       </div>
       <div class="city-meta" id="cityMetaView" style="margin: 14px 0 0;"></div>
-      <p class="settings-note" style="margin: 10px 0 0;">Altın, çalıştığın süreden kazanılır: saat × (seri + 20) / 20; çarpan en çok ×3'tür (seri 40 günde tavana ulaşır). Odak modunda kazanç ×1,5 olur. Nüfusun arttıkça şehrin seviye atlar; her seviye bonus altın ve yeni yapılar getirir. Seri 7, 14, 30, 60 ve 100. günlerde rozet ve bonus altın kazandırır (14. ve 60. günde seri kalkanı da). Günlük 3 görevi bitirince sandık açılır; tamamlanan konular, çözülen/tekrar edilen hatalar ve deneme netindeki artış da altın verir. Kesintisiz çalışırken 25, 50 ve 90. dakikada sürpriz bonus gelir. Odak seansını yarıda bırakırsan ceza küçüktür ve 25 dakika çalışınca kalkar. Bir gün kaçırırsan seri kalkanı (20 altın) serini otomatik korur.</p>
+      <p class="settings-note" style="margin: 10px 0 0;">Altın, çalıştığın süreden kazanılır: saat × (seri + 20) / 20; çarpan en çok ×3'tür (seri 40 günde tavana ulaşır). Odak modunda kazanç ×1,5 olur. Nüfusun arttıkça şehrin seviye atlar; her seviye bonus altın ve yeni yapılar getirir. Seri 7, 14, 30, 60 ve 100. günlerde rozet ve bonus altın kazandırır (14. ve 60. günde seri kalkanı da). Günlük 3 görevi bitirince sandık açılır; tamamlanan konular, çözülen/tekrar edilen hatalar ve deneme netindeki artış da altın verir. Kesintisiz çalışırken 25, 50 ve 90. dakikada sürpriz bonus gelir. Odak seansını yarıda bırakırsan ceza küçüktür ve 25 dakika çalışınca kalkar. Bir gün kaçırırsan seri kalkanı (20 altın) serini otomatik korur. Nüfus veren yapıları seçip ⭐ ile iki kez yükseltebilirsin (her yıldız nüfusu %25 artırır). Şehir seviyesi yetince "Yeni mahalle" ile alan genişler. Öğleden sonra hiç çalışmadıysan şehir uykulu görünür; çalışınca uyanır. Haftalık şehir kartını görsel olarak indirip paylaşabilirsin.</p>
     </div>
 
     <div class="dash-card">
       <div class="city-split-row">
         <div class="city-pixel-col">
-          <div class="panel-title" style="margin-bottom: 12px;">piksel şehrim</div>
+          <div class="panel-title" style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+            <span>piksel şehrim</span>
+            <button type="button" class="city-meta-btn" id="city3dBtn" style="margin-left: 0;">🧪 3D önizleme</button>
+          </div>
+          <div class="pixel-city-3d" id="pixelCity3d" hidden>
+            <div class="city3d-hint">Sürükle: döndür · Tekerlek: yakınlaştır · Yapı yerleştirmek için 2D'ye dön</div>
+          </div>
           <div class="pixel-city-scene" id="pixelCityScene" data-tod="day">
             <div class="pcs-sky"></div>
             <div class="pcs-stars"></div>
@@ -814,6 +821,7 @@
 <script src="yks-sayac-study.js"></script>
 <script src="yks-sayac-city-sprites.js"></script>
 <script src="yks-sayac-city.js"></script>
+<script src="yks-sayac-city3d.js"></script>
 <script src="yks-sayac-city-walkers.js"></script>
 <script src="yks-sayac-focus.js"></script>
 <script src="yks-sayac-ui.js"></script>

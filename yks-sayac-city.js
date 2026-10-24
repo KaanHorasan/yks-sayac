@@ -14,6 +14,7 @@ function loadCity() {
         if (parsed && Array.isArray(parsed.buildings)) {
           if (typeof parsed.coins !== "number") parsed.coins = 0;
           if (typeof parsed.debuffSessionsLeft !== "number") parsed.debuffSessionsLeft = 0;
+          cityApplyRows(parsed);   // kayıtlı genişleme kadar sıra; yerleşim düzeltmesinden ÖNCE
           return normalizeCityLayout(cityMigrateRemoved(parsed));
         }
       } catch (e) {}
@@ -308,6 +309,131 @@ function cityCheckProgress() {
     cityCelebrate(msgs);
   }
 }
+// ---- Aşama 3: bina yıldızları (yükseltme), yeni mahalle (ızgara genişletme), canlı şehir, haftalık şehir kartı ----
+var CITY_UPGRADE = { maxStars: 2, popBonus: 0.25, costFrac: [0.5, 1.0] };   // her yıldız nüfusu +%25; maliyet = yapı fiyatının 0,5× / 1,0×
+var CITY_ROWS_BASE = 5;
+var CITY_EXPANSIONS = [ { cost: 150, level: 2 }, { cost: 400, level: 3 } ];  // her genişleme +2 sıra; Şehir / Metropol seviyesi ister
+function cityApplyRows(state) { CITY_ROWS = CITY_ROWS_BASE + 2 * ((state && state.expansions) || 0); }
+function cityBuildingPop(b, type) { return Math.round(((type && type.population) || 0) * (1 + CITY_UPGRADE.popBonus * (b.stars || 0))); }
+function cityUpgradeCost(type, stars) { return Math.ceil(type.cost * CITY_UPGRADE.costFrac[stars]); }
+function cityUpgradeSpent(type, stars) { var t = 0; for (var i = 0; i < stars; i++) t += cityUpgradeCost(type, i); return t; }
+function upgradeSelectedCityItem() {
+  var b = cityState.buildings.filter(function (x) { return x.id === selectedCityItemId; })[0];
+  var type = b ? cityTypeOf(b) : null;
+  if (!b || !type || !type.population || (b.stars || 0) >= CITY_UPGRADE.maxStars) return;
+  var cost = cityUpgradeCost(type, b.stars || 0);
+  if ((cityState.coins || 0) < cost) { if (typeof showUpdateToast === "function") showUpdateToast("⭐ Yükseltmek için " + cost + " altın gerekir (elinde " + cityFmtGold(cityState.coins || 0) + ")."); return; }
+  cityState.coins = roundCoins(cityState.coins - cost);
+  b.stars = (b.stars || 0) + 1;
+  saveCity();
+  renderCity();
+  renderCityViewAll();
+  cityFloat("⭐ " + type.name + " yükseltildi");
+}
+function cityBuyExpansion() {
+  var n = cityState.expansions || 0, ex = CITY_EXPANSIONS[n];
+  if (!cityLoadedOnce || !ex || cityActiveItem() || cityLevelIndex() < ex.level || (cityState.coins || 0) < ex.cost) return;
+  cityState.coins = roundCoins(cityState.coins - ex.cost);
+  cityState.expansions = n + 1;
+  cityState.buildings.forEach(function (b) { if (typeof b.gy === "number") b.gy += 2; });   // yeni sıralar arkaya eklenir, mevcut yapılar yerinde kalır
+  selectedCityItemId = null;
+  cityApplyRows(cityState);
+  saveCity();
+  renderCity();
+  renderCityViewAll();
+  cityCelebrate(["🏗️ Yeni mahalle açıldı! (+2 sıra)"]);
+}
+// Canlı şehir: öğleden sonra hâlâ en az 10 dk çalışılmadıysa şehir "uykulu" görünür (cezasız, sadece hatırlatma).
+function cityIsSleepy() { return new Date().getHours() >= 15 && cityTodayStudySeconds() < 600; }
+function cityApplySleepy() {
+  var scene = document.getElementById("pixelCityScene");
+  if (scene && scene.classList) { if (cityIsSleepy()) scene.classList.add("is-sleepy"); else scene.classList.remove("is-sleepy"); }
+}
+// ---- Haftalık şehir kartı (Canvas ile PNG) ----
+var CITY_DAY_NAMES = ["Paz", "Pzt", "Sal", "Çar", "Per", "Cum", "Cmt"];
+function cityWeeklyStats() {
+  var days = [];
+  for (var i = 13; i >= 0; i--) { var d = new Date(); d.setDate(d.getDate() - i); days.push(d); }
+  return Promise.all(days.map(function (d, idx) {
+    if (idx === 13) return Promise.resolve(cityTodayStudySeconds());
+    return getStudyDaySeconds("study-" + dateStr(d), false);
+  })).then(function (secs) {
+    var week = secs.slice(7), prev = secs.slice(0, 7);
+    var weekStart = new Date(); weekStart.setDate(weekStart.getDate() - 6); weekStart.setHours(0, 0, 0, 0);
+    var built = cityState.buildings.filter(function (b) { return b.builtAt && b.builtAt >= weekStart.getTime() && cityTypeOf(b) && !cityIsRoad(b); })
+      .map(function (b) { return b.name; });
+    return {
+      days: days.slice(7), week: week, prevTotal: prev.reduce(function (a, b) { return a + b; }, 0),
+      total: week.reduce(function (a, b) { return a + b; }, 0), built: built,
+      pop: cityPopulation(), level: CITY_LEVELS[cityLevelIndex()], streak: (typeof streakDisplayedValue === "number") ? streakDisplayedValue : 0,
+      buildings: cityBuildingCount()
+    };
+  });
+}
+function cityDrawWeeklyCard(c, W, H, s) {
+  var g = c.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#14213d"); g.addColorStop(1, "#1f4068");
+  c.fillStyle = g; c.fillRect(0, 0, W, H);
+  c.textAlign = "center"; c.fillStyle = "#ffd166";
+  c.font = "700 54px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+  c.fillText("Haftalık Şehir Raporu", W / 2, 120);
+  var a = s.days[0], b = s.days[6];
+  c.fillStyle = "rgba(255,255,255,0.7)"; c.font = "400 30px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+  c.fillText(a.getDate() + "." + (a.getMonth() + 1) + " – " + b.getDate() + "." + (b.getMonth() + 1) + "." + b.getFullYear(), W / 2, 168);
+  c.font = "400 150px 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif"; c.fillStyle = "#fff";
+  c.fillText(s.level.emoji, W / 2, 360);
+  c.font = "700 64px 'IBM Plex Sans', 'Segoe UI', sans-serif"; c.fillStyle = "#fff";
+  c.fillText(s.level.name, W / 2, 440);
+  c.font = "400 34px 'IBM Plex Sans', 'Segoe UI', sans-serif"; c.fillStyle = "rgba(255,255,255,0.8)";
+  c.fillText(s.pop + " nüfus · " + s.buildings + " yapı · 🔥 seri " + s.streak, W / 2, 492);
+  // 7 günlük sütunlar
+  var max = Math.max.apply(null, s.week.concat([3600])), baseY = 880, areaH = 300, bw = 96, gap = 28;
+  var x0 = (W - (7 * bw + 6 * gap)) / 2;
+  s.week.forEach(function (sec, i) {
+    var h = Math.max(6, Math.round(sec / max * areaH)), x = x0 + i * (bw + gap);
+    c.fillStyle = sec >= 5400 ? "#ffd166" : "rgba(255,255,255,0.35)";
+    c.fillRect(x, baseY - h, bw, h);
+    c.fillStyle = "rgba(255,255,255,0.85)"; c.font = "400 26px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+    c.fillText(CITY_DAY_NAMES[s.days[i].getDay()], x + bw / 2, baseY + 38);
+    if (sec > 0) c.fillText((sec / 3600).toFixed(1).replace(".", ","), x + bw / 2, baseY - h - 12);
+  });
+  c.fillStyle = "#fff"; c.font = "700 56px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+  c.fillText("Toplam: " + cityFmtDuration(s.total / 3600), W / 2, 1020);
+  var diff = s.total - s.prevTotal;
+  c.font = "400 32px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+  c.fillStyle = diff >= 0 ? "#8ee08e" : "#ffb3b3";
+  c.fillText((diff >= 0 ? "▲ " : "▼ ") + cityFmtDuration(Math.abs(diff) / 3600) + " geçen haftaya göre", W / 2, 1066);
+  c.fillStyle = "rgba(255,255,255,0.85)"; c.font = "400 32px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+  c.fillText(s.built.length ? "🏗️ Bu hafta eklenen: " + s.built.slice(0, 5).join(", ") + (s.built.length > 5 ? " +" + (s.built.length - 5) : "") : "🏗️ Bu hafta yeni yapı eklenmedi", W / 2, 1150);
+  c.fillStyle = "rgba(255,255,255,0.45)"; c.font = "400 26px 'IBM Plex Sans', 'Segoe UI', sans-serif";
+  c.fillText("YKS Sayaç", W / 2, H - 60);
+}
+function cityShowWeeklyCard() {
+  cityWeeklyStats().then(function (stats) {
+    var W = 1080, H = 1350, cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    cityDrawWeeklyCard(cv.getContext("2d"), W, H, stats);
+    var url = cv.toDataURL("image/png");
+    var ov = document.createElement("div");
+    ov.className = "city-card-overlay";
+    ov.innerHTML = '<div class="city-card-box"><img alt="Haftalık şehir kartı" src="' + url + '"><div class="city-card-actions">' +
+      '<a class="city-meta-btn" download="haftalik-sehir.png" href="' + url + '">⬇️ İndir</a>' +
+      '<button type="button" class="city-meta-btn" data-card="share">📤 Paylaş</button>' +
+      '<button type="button" class="city-meta-btn" data-card="close">Kapat</button></div></div>';
+    ov.addEventListener("click", function (e) {
+      var k = e.target && e.target.getAttribute ? e.target.getAttribute("data-card") : null;
+      if (k === "close" || e.target === ov) { ov.remove(); return; }
+      if (k === "share") {
+        cv.toBlob(function (blob) {
+          var file = blob && new File([blob], "haftalik-sehir.png", { type: "image/png" });
+          if (file && navigator.canShare && navigator.canShare({ files: [file] })) navigator.share({ files: [file], title: "Haftalık şehir raporum" }).catch(function () {});
+          else if (typeof showUpdateToast === "function") showUpdateToast("Bu cihaz paylaşmayı desteklemiyor; İndir'i kullan.");
+        });
+      }
+    });
+    document.body.appendChild(ov);
+  });
+}
 function cityFmtDuration(h) {
   if (!isFinite(h)) return "—";
   var total = Math.ceil(h * 60);
@@ -361,6 +487,7 @@ function renderCityMeta() {
       var rec = Math.min(R.debuffRecoveryMin, Math.floor((cityState.debuffRecoveryMs || 0) / 60000));
       html += cityMetaRow("⚠️ Odak cezası", "sonraki ödüllü odak seansı yarım · " + R.debuffRecoveryMin + " dk çalışınca kalkar (" + rec + "/" + R.debuffRecoveryMin + ")", Math.round(rec / R.debuffRecoveryMin * 100), false);
     }
+    if (cityIsSleepy()) html += '<div class="city-meta-hint">💤 Şehir seni bekliyor — 10 dakika çalışınca uyanır.</div>';
     html += cityQuestsHtml(full);
     if (typeof streakDisplayedValue === "number" && full) {
       var sv = streakDisplayedValue, mult = cityStreakMultiplier();
@@ -376,6 +503,14 @@ function renderCityMeta() {
       html += '<div class="city-meta-row"><div class="city-meta-top"><b>🛡️ Seri kalkanı</b><span>' + jk + "/" + R.jokerMax +
         " · bir gün kaçırırsan serin otomatik korunur " +
         '<button type="button" class="city-meta-btn" data-act="buy-joker"' + ((jk >= R.jokerMax || coins < R.jokerCost) ? " disabled" : "") + ">Al · " + R.jokerCost + " altın</button></span></div></div>";
+      var exN = cityState.expansions || 0, ex = CITY_EXPANSIONS[exN];
+      if (ex) {
+        var exLocked = lv < ex.level;
+        html += '<div class="city-meta-row"><div class="city-meta-top"><b>🏗️ Yeni mahalle</b><span>' + exN + "/" + CITY_EXPANSIONS.length + " · +2 sıra · " + ex.cost + " altın" +
+          (exLocked ? " · 🔒 " + CITY_LEVELS[ex.level].name + " seviyesi" : "") + ' <button type="button" class="city-meta-btn" data-act="buy-expansion"' +
+          ((exLocked || coins < ex.cost || cityActiveItem()) ? " disabled" : "") + ">Aç</button></span></div></div>";
+      } else html += '<div class="city-meta-hint">🏗️ Tüm mahalleler açık.</div>';
+      html += '<div class="city-meta-row"><div class="city-meta-top"><b>🖼️ Haftalık şehir kartı</b><span>paylaşılabilir görsel <button type="button" class="city-meta-btn" data-act="weekly-card">Oluştur</button></span></div></div>';
     }
     if (box._last !== html) { box.innerHTML = html; box._last = html; }   // değişmediyse yeniden çizme (basılan düğme kaybolmasın)
     if (!box._wired) {
@@ -385,6 +520,8 @@ function renderCityMeta() {
         if (act === "clear-target") { cityState.target = null; saveCity(); renderCityViewAll(); }
         else if (act === "open-chest") cityOpenChest();
         else if (act === "buy-joker") cityBuyJoker();
+        else if (act === "buy-expansion") cityBuyExpansion();
+        else if (act === "weekly-card") cityShowWeeklyCard();
       });
     }
   });
@@ -634,8 +771,8 @@ function removeSelectedCityItem() {
   var b = cityState.buildings.filter(function (x) { return x.id === selectedCityItemId; })[0];
   if (!b) return;
   var type = cityTypeOf(b);
-  var refund = type ? roundCoins(type.cost * CITY_SELL_RATIO) : 0;
-  var popLoss = type ? (type.population || 0) : 0;
+  var refund = type ? roundCoins((type.cost + cityUpgradeSpent(type, b.stars || 0)) * CITY_SELL_RATIO) : 0;   // yükseltme harcaması da %80 iade
+  var popLoss = type ? cityBuildingPop(b, type) : 0;
   var parts = [];
   parts.push(refund > 0 ? "+" + refund + " altın iade" : "iade yok");
   if (popLoss > 0) parts.push("-" + popLoss + " nüfus");
@@ -665,7 +802,7 @@ function cityPopulation() {
   var total = 0;
   cityState.buildings.forEach(function (b) {
     var type = BUILDING_TYPES.filter(function (t) { return t.name === b.name; })[0];
-    total += (type && type.population) || 0;
+    total += cityBuildingPop(b, type);
   });
   return total;
 }
@@ -786,6 +923,7 @@ function renderExistingBuildings(sky) {
       el.style.setProperty("--depth", String(cityDepth(gy)));
       el.style.setProperty("--hs", String(cityItemHs(b)));
       el.appendChild(cityItemSprite(b));
+      if (b.stars) { var badge = document.createElement("span"); badge.className = "pcs-star-badge"; badge.textContent = "⭐".repeat(b.stars); el.appendChild(badge); }
     }
     sky.appendChild(el);
   });
@@ -799,6 +937,9 @@ function renderPixelCityScene() {
   var scene = document.getElementById("pixelCityScene");
   var sky = document.getElementById("pixelCityBuildings");
   if (!scene || !sky) return;
+  cityApplyRows(cityState);
+  scene.style.setProperty("--rows-scale", String(CITY_ROWS / CITY_ROWS_BASE));
+  cityApplySleepy();
   applyCityTimeOfDay(scene);
 
   var active = cityActiveItem();
@@ -883,6 +1024,7 @@ function renderPixelCityScene() {
     addBtn("↻ Döndür", "", rotateActiveOrSelected);
     addBtn("✋ Taşı", "", startMovingSelected);
     if (sel.name === "Tabela") addBtn("✏️ Yazı", "", editSelectedSignLabel);
+    if (type && type.population > 0 && (sel.stars || 0) < CITY_UPGRADE.maxStars) addBtn("⭐ Yükselt · " + cityUpgradeCost(type, sel.stars || 0) + " altın", "", upgradeSelectedCityItem);
     addBtn("🗑 Sil", "danger", removeSelectedCityItem);
     addBtn("✕", "", function () { selectedCityItemId = null; renderPixelCityScene(); });
     sky.appendChild(bubble);
@@ -962,6 +1104,7 @@ function renderCityViewAll() {
   renderPixelCityScene();
   renderCityViewStats();
   cityCheckProgress();
+  if (typeof City3D !== "undefined" && City3D.isOn()) City3D.refresh();   // 3D önizleme açıkken değişiklikleri yansıt
 }
 function initCityView() {
   var dateEl = document.getElementById("cityViewDate");
