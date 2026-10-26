@@ -1,88 +1,12 @@
-// ============================================================================
-// YKS Sayaç — Şehrim: piksel sanatı yardımcıları ve bina tipleri
-// Klasik <script> (IIFE değil): üst düzey tanımlar diğer dosyalarla ortak global kapsamdadır.
-// Yükleme sırası yks-sayac.html içindeki <script> sırasıdır.
-// ============================================================================
+// Yapı katalogu: fiyat, nüfus, rol ve (2D) kısa görünüm bilgisi. Şehir artık yalnızca 3D çizilir (yks-sayac-city3d.js);
+// buradaki `images` anahtarları sadece görsel varyant seçimi içindir (ev1..ev8 -> 8 farklı ev modeli).
+// Alanlar: role (nüfus oranı için), minLevel (satın alma seviyesi), road (yol), cat/tab (pazar sekmesi), population (süs için 0).
+// pxH / glow / tiny / anim eski 2D alanlarıdır, kullanılmaz.
 
-// ---- Şehrim (odak ödül/ceza oyunu) ----
-
-// ---- Piksel ızgarası yardımcıları (yalnızca yol karoları için; yapılar artık hazır çizimlerden gelir) ----
-
-function pxMakeGrid(w, h) {
-  var grid = [];
-  for (var y = 0; y < h; y++) grid.push(new Array(w).fill(null));
-  return grid;
-}
-function pxSet(grid, x, y, color) {
-  if (y >= 0 && y < grid.length && x >= 0 && x < grid[0].length) grid[y][x] = color;
-}
-function pxFillRect(grid, x0, y0, w, h, color) {
-  for (var y = y0; y < y0 + h; y++) {
-    for (var x = x0; x < x0 + w; x++) pxSet(grid, x, y, color);
-  }
-}
-function pxGridToSvgMarkup(grid) {
-  var w = grid[0].length, h = grid.length;
-  var rects = [];
-  for (var y = 0; y < h; y++) {
-    for (var x = 0; x < w; x++) {
-      var c = grid[y][x];
-      if (c) rects.push('<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + c + '"/>');
-    }
-  }
-  return '<svg viewBox="0 0 ' + w + ' ' + h + '" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">' + rects.join("") + '</svg>';
-}
-function roadTileSvg(mask) {
-  if (!mask) mask = 10;
-  var A = "#4d515b", K = "#7b818d", L = "#e8d98e", N = 16;
-  var g = pxMakeGrid(N, N);
-  pxFillRect(g, 4, 4, 8, 8, A);
-  if (mask & 1) pxFillRect(g, 4, 0, 8, 4, A);
-  if (mask & 4) pxFillRect(g, 4, 12, 8, 4, A);
-  if (mask & 2) pxFillRect(g, 12, 4, 4, 8, A);
-  if (mask & 8) pxFillRect(g, 0, 4, 4, 8, A);
-  var edge = [];
-  for (var y = 0; y < N; y++) {
-    for (var x = 0; x < N; x++) {
-      if (!g[y][x]) continue;
-      var nb = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]];
-      for (var i = 0; i < 4; i++) {
-        var nx = nb[i][0], ny = nb[i][1];
-        if (nx >= 0 && nx < N && ny >= 0 && ny < N && !g[ny][nx]) { edge.push([x, y]); break; }
-      }
-    }
-  }
-  edge.forEach(function (p) { g[p[1]][p[0]] = K; });
-  function dashH(row, x0, x1) { for (var xx = x0; xx <= x1; xx++) if ((xx % 4) < 2) pxSet(g, xx, row, L); }
-  function dashV(col, y0, y1) { for (var yy = y0; yy <= y1; yy++) if ((yy % 4) < 2) pxSet(g, col, yy, L); }
-  if (mask === 10) { dashH(7, 0, 15); }
-  else if (mask === 5) { dashV(7, 0, 15); }
-  else {
-    if (mask & 8) dashH(7, 0, 3);
-    if (mask & 2) dashH(7, 12, 15);
-    if (mask & 1) dashV(7, 0, 3);
-    if (mask & 4) dashV(7, 12, 15);
-  }
-  return pxGridToSvgMarkup(g).replace("<svg ", '<svg preserveAspectRatio="none" ');
-}
+// Pano (şehrim kartı) ve yedek gösterim: yalnızca emoji.
 function buildingVisualMarkup(b, type) {
   type = type || BUILDING_TYPES.filter(function (t) { return t.name === b.name; })[0];
-  if (type && type.anim && BUILDING_IMAGES[type.anim.key]) {
-    var an = type.anim;
-    return '<div class="pcs-anim" role="img" aria-label="' + b.name + '" style="--frames:' + an.frames +
-      ';--ar:' + an.w + ' / ' + an.h + ';--ms:' + an.ms + 'ms;background-image:url(' + BUILDING_IMAGES[an.key] + ')"></div>';
-  }
-  var imgKey = b.imageKey;
-  if (!imgKey && type && type.images && type.images.length) imgKey = type.images[0];
-  if (imgKey && BUILDING_IMAGES[imgKey]) {
-    var litSrc = BUILDING_IMAGES[imgKey + "_lit"];
-    if (litSrc) {
-      return '<img class="pcs-day" src="' + BUILDING_IMAGES[imgKey] + '" alt="' + b.name + '">' +
-        '<img class="pcs-lit' + ((type && type.glow) ? ' pcs-glow' : '') + '" src="' + litSrc + '" alt="">';
-    }
-    return '<img src="' + BUILDING_IMAGES[imgKey] + '" alt="' + b.name + '">';
-  }
-  return '<span style="font-size:26px;">' + (b.emoji || "\ud83c\udfe0") + '</span>';
+  return '<span style="font-size:26px;">' + (b.emoji || (type && type.emoji) || "\ud83c\udfe0") + '</span>';
 }
 // minLevel: yapının satın alınabildiği şehir seviyesi (CITY_LEVELS indeksi; yoksa 0 = baştan açık). Mevcut yapılar kilitlenmez.
 // Nüfus = altın × oran. Oran yapının rolüne göre tek tabloda: yeniden dengelemek için sadece buradaki sayıları değiştir.

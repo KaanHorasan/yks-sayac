@@ -372,27 +372,10 @@
     <div class="dash-card">
       <div class="city-split-row">
         <div class="city-pixel-col">
-          <div class="panel-title" style="margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-            <span>piksel şehrim</span>
-            <button type="button" class="city-meta-btn" id="city3dBtn" style="margin-left: 0;">🧪 3D önizleme</button>
-          </div>
-          <div class="pixel-city-3d" id="pixelCity3d" hidden>
-            <div class="city3d-hint">Sürükle: döndür · Tekerlek: yakınlaştır · Yapı yerleştirmek için 2D'ye dön</div>
-          </div>
-          <div class="pixel-city-scene" id="pixelCityScene" data-tod="day">
-            <div class="pcs-sky"></div>
-            <div class="pcs-stars"></div>
-            <div class="pcs-orb"></div>
-            <div class="pcs-cloud" style="top: 7%; animation-duration: 120s; animation-delay: -30s;"></div>
-            <div class="pcs-cloud" style="top: 17%; animation-duration: 175s; animation-delay: -110s;"></div>
-            <div class="pcs-cloud" style="top: 12%; animation-duration: 150s; animation-delay: -70s;"></div>
-            <div class="pcs-hills-back"></div>
-            <div class="pcs-hills-front"></div>
-            <div class="pcs-ground"></div>
-            <div class="pixel-city-sky" id="pixelCityBuildings"></div>
-          </div>
-          <p class="settings-note" style="margin: 8px 0 0;">Bir yapıya tıklayıp döndürebilir (R), taşıyabilir ya da silebilirsin (Delete). Yollar yan yana konunca kendiliğinden birleşir; karakterler yollarda yürür ve binalara girip çıkar.</p>
-          <p class="settings-note" style="margin: 4px 0 0; opacity: 0.7;">Modern şehir çizimleri: "City Pack" — nyknck.</p>
+          <div class="panel-title" style="margin-bottom: 12px;">şehrim</div>
+          <div class="pixel-city-3d" id="pixelCity3d"></div>
+          <p class="settings-note" style="margin: 8px 0 0;">Bir yapıya tıkla: döndür (R), taşı, yükselt ya da sil (Delete). Marketten aldığın yapıyı bir kareye tıklayarak yerleştirirsin. Yollar yan yana konunca otomatik birleşir. Kamera: sol tuşla döndür, sağ tuş / Shift ile kaydır, tekerlekle yakınlaştır; telefonda tek parmakla döndür, iki parmakla kaydır ve yakınlaştır.</p>
+          <p class="settings-note" style="margin: 4px 0 0; opacity: 0.7;">3D modeller: Kenney (kenney.nl), CC0.</p>
         </div>
         <div class="city-market-col">
           <div class="panel-title" style="margin-bottom: 12px;">market</div>
@@ -811,7 +794,6 @@
 <script src="vendor/firebase-auth-compat.js"></script>
 <script src="vendor/firebase-firestore-compat.js"></script>
 <script src="yks-sayac-cloud.js"></script>
-<script src="yks-sayac-images.js"></script>
 <script src="yks-sayac-core.js"></script>
 <script src="yks-sayac-backup.js"></script>
 <script src="yks-sayac-update.js"></script>
@@ -822,7 +804,6 @@
 <script src="yks-sayac-city-sprites.js"></script>
 <script src="yks-sayac-city.js"></script>
 <script src="yks-sayac-city3d.js"></script>
-<script src="yks-sayac-city-walkers.js"></script>
 <script src="yks-sayac-focus.js"></script>
 <script src="yks-sayac-ui.js"></script>
 <script src="yks-sayac-pip.js"></script>
@@ -834,7 +815,7 @@
 <script>
 // Eksik/yarım güncelleme koruması: modül dosyalarından biri yüklenemediyse sessizce bozulmak yerine uyar.
 (function () {
-  var need = [["yks-sayac-core.js","loadSettings"],["yks-sayac-backup.js","exportBackup"],["yks-sayac-update.js","checkForUpdate"],["yks-sayac-widget.js","renderTopics"],["yks-sayac-topics.js","renderTopicsView"],["yks-sayac-notes.js","initNotesView"],["yks-sayac-study.js","toggleStudy"],["yks-sayac-city-sprites.js","BUILDING_TYPES"],["yks-sayac-city.js","initCityView"],["yks-sayac-city-walkers.js","setupPixelCityScenery"],["yks-sayac-focus.js","exitFocusMode"],["yks-sayac-ui.js","tick"],["yks-sayac-pip.js","openWidgetPip"],["yks-sayac-exam.js","initExamView"],["yks-sayac-plan.js","renderPlanViewData"],["yks-sayac-sync.js","buildStudentSummaryPayload"],["yks-sayac-main.js","isCoach"]];
+  var need = [["yks-sayac-core.js","loadSettings"],["yks-sayac-backup.js","exportBackup"],["yks-sayac-update.js","checkForUpdate"],["yks-sayac-widget.js","renderTopics"],["yks-sayac-topics.js","renderTopicsView"],["yks-sayac-notes.js","initNotesView"],["yks-sayac-study.js","toggleStudy"],["yks-sayac-city3d.js","City3D"],["yks-sayac-city-sprites.js","BUILDING_TYPES"],["yks-sayac-city.js","initCityView"],["yks-sayac-focus.js","exitFocusMode"],["yks-sayac-ui.js","tick"],["yks-sayac-pip.js","openWidgetPip"],["yks-sayac-exam.js","initExamView"],["yks-sayac-plan.js","renderPlanViewData"],["yks-sayac-sync.js","buildStudentSummaryPayload"],["yks-sayac-main.js","isCoach"]];
   var missing = [];
   for (var i = 0; i < need.length; i++) {
     if (typeof window[need[i][1]] === "undefined") missing.push(need[i][0]);

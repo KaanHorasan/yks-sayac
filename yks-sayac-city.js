@@ -263,7 +263,7 @@ function cityCelebrate(msgs) {
   if (typeof showUpdateToast === "function") showUpdateToast(msgs.join("   ·   "));
   if (typeof triggerCelebrationMessage !== "function") return;
   var seen = [];
-  ["cityStats", "pixelCityScene"].forEach(function (id) {
+  ["cityStats", "pixelCity3d"].forEach(function (id) {
     var el = document.getElementById(id);
     var card = el && el.closest ? el.closest(".dash-card") : null;
     if (card && card.offsetParent !== null && seen.indexOf(card) < 0) { seen.push(card); triggerCelebrationMessage(card, msgs[0]); }
@@ -346,7 +346,7 @@ function cityBuyExpansion() {
 // Canlı şehir: öğleden sonra hâlâ en az 10 dk çalışılmadıysa şehir "uykulu" görünür (cezasız, sadece hatırlatma).
 function cityIsSleepy() { return new Date().getHours() >= 15 && cityTodayStudySeconds() < 600; }
 function cityApplySleepy() {
-  var scene = document.getElementById("pixelCityScene");
+  var scene = document.getElementById("pixelCity3d");
   if (scene && scene.classList) { if (cityIsSleepy()) scene.classList.add("is-sleepy"); else scene.classList.remove("is-sleepy"); }
 }
 // ---- Haftalık şehir kartı (Canvas ile PNG) ----
@@ -600,26 +600,15 @@ function accrueStudyGold() {
 // ---- Şehir yerleşimi: 14x5 ızgara, derinlik, yol/dekor ----
 var CITY_COLS = 14, CITY_ROWS = 5;
 var CITY_SELL_RATIO = 0.8; // yapı silinince maliyetin bu kadarı iade edilir
+// Yatay kaç kare kaplar (varsayılan 1). Görünüm 3D modelden gelir (yks-sayac-city3d.js).
 var CITY_LOOK = {
-  "Çiftlik": { span: 2, hs: 1.3 }, "Okul": { span: 2, hs: 1.3 },
-  "Tarihi Kule": { hs: 1.3 }, "Gizemli İstasyon": { hs: 1.1 },
-  "Plaza": { span: 2 }
+  "Çiftlik": { span: 2 }, "Okul": { span: 2 }, "Plaza": { span: 2 }
 };
 function cityTypeOf(b) { return BUILDING_TYPES.filter(function (t) { return t.name === b.name; })[0] || null; }
 function cityItemSpan(b) { var l = CITY_LOOK[b.name]; return (l && l.span) || 1; }
-// Modern şehir sprite'ları için ölçek: 1 kaynak piksel ~ 1.05 ekran pikseli (türün pxH'ı üzerinden),
-// küçük süsler (tiny) okunur olsun diye 1.35 kat büyütülür.
-function cityItemHs(b) {
-  var l = CITY_LOOK[b.name];
-  if (l && l.hs) return l.hs;
-  var t = cityTypeOf(b);
-  if (t && t.pxH) return t.pxH * 0.016 * (t.tiny ? 1.35 : 1);
-  return 1;
-}
 function cityIsRoad(b) { var t = cityTypeOf(b); return !!(t && t.road); }
 function cityIsCounted(b) { var t = cityTypeOf(b); return !t || (t.cat || "bina") === "bina"; }
 function cityBuildingCount() { return cityState.buildings.filter(cityIsCounted).length; }
-function cityDepth(gy) { return 0.82 + 0.045 * gy; }
 function cityOccupancy(list, exceptId) {
   var occ = {};
   list.forEach(function (b) {
@@ -651,6 +640,14 @@ function cityFindFree(occ, gx, gy, span) {
 // Eski kayıtlarda sadece xPercent var: hepsi ön sıraya (ana yolun yanına) oturtulur,
 // dolu kareler varsa bir üst sıraya taşar. xPercent geriye dönük uyumluluk için güncel tutulur.
 function normalizeCityLayout(state) {
+  // 3D'ye geçiş: eski ayna çevirme (flip) 180° dönüşe, yolların eski yön ayarı (rot) silinir (yollar komşudan otomatik çözülür)
+  state.buildings.forEach(function (b) {
+    var t = BUILDING_TYPES.filter(function (x) { return x.name === b.name; })[0];
+    if (t && t.road) { delete b.rot; delete b.flip; return; }
+    if (b.flip) { b.rot = ((b.rot || 0) + 2) % 4; }
+    delete b.flip;
+    b.rot = (((b.rot || 0) % 4) + 4) % 4;
+  });
   var occ = cityOccupancy(state.buildings);
   state.buildings.forEach(function (b, i) {
     if (typeof b.gx === "number" && typeof b.gy === "number") return;
@@ -665,55 +662,27 @@ function normalizeCityLayout(state) {
   });
   return state;
 }
-function cityRoadMap() {
-  var map = {};
-  cityState.buildings.forEach(function (o) {
-    if (cityIsRoad(o) && typeof o.gx === "number" && o.id !== movingId) map[o.gx + "," + o.gy] = true;
-  });
-  return map;
-}
-function cityRoadMask(b, map) {
-  var m = 0;
-  if (map[b.gx + "," + (b.gy - 1)]) m |= 1;
-  if (map[(b.gx + 1) + "," + b.gy]) m |= 2;
-  if (map[b.gx + "," + (b.gy + 1)]) m |= 4;
-  if (map[(b.gx - 1) + "," + b.gy]) m |= 8;
-  if (b.rot === 1) m |= 5;    // dikey kollar (kuzey + güney)
-  if (b.rot === 2) m |= 10;   // yatay kollar (doğu + batı)
-  return m;
-}
-function cityRoadPreviewMask(b) { return b && b.rot === 1 ? 5 : 10; }
-// Yollar: otomatik -> dikey -> yatay. Binalar: yatay çevirme (ayna). Sprite'lar önden görünümlü
-// olduğu için 90 derece yatırmak yerine sağ-sol çevirmek doğru görüntüyü verir.
+// Binalar çeyrek tur (90°) döner; 2 kare genişliğindekiler yalnızca 180° (yatay yer kaplamaları bozulmasın). Yollar komşudan otomatik.
 function cityRotateItem(b) {
-  if (!b) return;
-  if (cityIsRoad(b)) {
-    var hasNeighbor = false;
-    if (typeof b.gx === "number" && typeof b.gy === "number") {
-      hasNeighbor = cityWalkerNeighbors(b.gx, b.gy, cityRoadMap()).length > 0;
-    }
-    var next = ((b.rot || 0) + 1) % 3;
-    if (!hasNeighbor && next === 0) next = 1;   // yalnız karede "otomatik" yatayla aynı görünür, atla
-    b.rot = next;
-  } else {
-    b.flip = !b.flip;
-  }
+  if (!b || cityIsRoad(b)) return;
+  b.rot = ((b.rot || 0) + (cityItemSpan(b) > 1 ? 2 : 1)) % 4;
 }
 function rotateActiveOrSelected() {
   var active = cityActiveItem();
   if (active) {
     cityRotateItem(active);
     if (!pendingBuilding) saveCity();   // taşınan yapı zaten şehirde; yeni alınan yerleşince kaydedilir
-    renderPixelCityScene();
+    if (typeof City3D !== "undefined") City3D.refresh();
+    if (typeof City3D !== "undefined") City3D.refreshNow();
     return;
   }
   var sel = selectedCityItemId
     ? cityState.buildings.filter(function (x) { return x.id === selectedCityItemId; })[0]
     : null;
-  if (!sel) return;
+  if (!sel || cityIsRoad(sel)) return;
   cityRotateItem(sel);
   saveCity();
-  renderPixelCityScene();
+  renderCityViewAll();
 }
 var pendingBuilding = null; // marketten yeni alınmış, henüz yerleştirilmemiş
 var movingId = null;        // şehirdeki mevcut bir yapı taşınıyor
@@ -796,7 +765,7 @@ function editSelectedSignLabel() {
   if (!b || b.name !== "Tabela") return;
   b.label = askSignLabel(b.label);
   saveCity();
-  renderPixelCityScene();
+  renderCityViewAll();
 }
 function cityPopulation() {
   var total = 0;
@@ -845,19 +814,7 @@ function renderMarket() {
     var locked = cityTypeLocked(type);
     var canAfford = !busy && !locked && (cityState.coins || 0) >= type.cost;
     var isTarget = cityState.target === type.name;
-    var animPreview = "";
-    if (type.anim && BUILDING_IMAGES[type.anim.key]) {
-      var sc = Math.min(40 / type.anim.h, 56 / type.anim.w);
-      animPreview = '<div class="city-market-anim" style="width:' + Math.round(type.anim.w * sc) + 'px;height:' + Math.round(type.anim.h * sc) +
-        'px;background-image:url(' + BUILDING_IMAGES[type.anim.key] + ');background-size:' + (type.anim.frames * 100) + '% 100%;"></div>';
-    }
-    var preview = animPreview
-      ? animPreview
-      : type.road
-      ? roadTileSvg(10)
-      : (type.images && type.images.length
-        ? '<img src="' + BUILDING_IMAGES[type.images[0]] + '" alt="' + type.name + '">'
-        : type.emoji);
+    var preview = '<span data-thumb="' + type.name + '">' + type.emoji + '</span>';
     var item = document.createElement("div");
     item.className = "city-market-item" + (locked ? " is-locked" : "");
     item.innerHTML =
@@ -875,6 +832,7 @@ function renderMarket() {
     if (tgBtn) tgBtn.addEventListener("click", function () { citySetTarget(type.name); });
     grid.appendChild(item);
   });
+  if (typeof City3D !== "undefined") City3D.fillThumbs(grid);
 }
 function renderCityViewStats() {
   var coinEl = document.getElementById("cityViewCoinValue");
@@ -884,177 +842,6 @@ function renderCityViewStats() {
   if (countEl) countEl.textContent = cityBuildingCount();
   if (popEl) popEl.textContent = cityPopulation();
   renderCityMeta();
-}
-function cityItemSprite(b) {
-  var wrap = document.createElement("div");
-  wrap.className = "pcs-sprite" + (b.flip ? " is-flipped" : "") + (b.name === "Tabela" ? " pcs-sign-board" : "");
-  wrap.innerHTML = buildingVisualMarkup(b);
-  if (b.name === "Tabela") {
-    var lab = document.createElement("span");
-    lab.className = "pcs-sign-label";
-    lab.textContent = b.label || "Şehir";
-    wrap.appendChild(lab);
-  }
-  return wrap;
-}
-function renderExistingBuildings(sky) {
-  var roadMap = cityRoadMap();
-  cityState.buildings.forEach(function (b) {
-    if (b.id === movingId) return;
-    var span = cityItemSpan(b);
-    var gx = (typeof b.gx === "number") ? b.gx : 0;
-    var gy = (typeof b.gy === "number") ? b.gy : 0;
-    var isRoad = cityIsRoad(b);
-    var el = document.createElement("div");
-    el.className = "pcs-item" + (isRoad ? " pcs-road" : "") + (b.id === selectedCityItemId ? " is-selected" : "");
-    el.setAttribute("data-id", b.id);
-    el.title = b.name + (b.builtAt ? " · " + formatNoteTimestamp(b.builtAt) : "");
-    if (isRoad) {
-      el.style.left = (gx / CITY_COLS * 100) + "%";
-      el.style.top = (gy / CITY_ROWS * 100) + "%";
-      el.style.width = (100 / CITY_COLS) + "%";
-      el.style.height = (100 / CITY_ROWS) + "%";
-      el.innerHTML = roadTileSvg(cityRoadMask({ gx: gx, gy: gy, rot: b.rot }, roadMap));
-    } else {
-      el.style.left = ((gx + span / 2) / CITY_COLS * 100) + "%";
-      el.style.top = ((gy + 1) / CITY_ROWS * 100) + "%";
-      el.style.zIndex = String(10 + gy);
-      el.style.setProperty("--span", String(span));
-      el.style.setProperty("--depth", String(cityDepth(gy)));
-      el.style.setProperty("--hs", String(cityItemHs(b)));
-      el.appendChild(cityItemSprite(b));
-      if (b.stars) { var badge = document.createElement("span"); badge.className = "pcs-star-badge"; badge.textContent = "⭐".repeat(b.stars); el.appendChild(badge); }
-    }
-    sky.appendChild(el);
-  });
-}
-function applyCityTimeOfDay(scene) {
-  var h = new Date().getHours();
-  var tod = (h >= 5 && h < 8) ? "dawn" : (h >= 8 && h < 17) ? "day" : (h >= 17 && h < 20) ? "dusk" : "night";
-  scene.setAttribute("data-tod", tod);
-}
-function renderPixelCityScene() {
-  var scene = document.getElementById("pixelCityScene");
-  var sky = document.getElementById("pixelCityBuildings");
-  if (!scene || !sky) return;
-  cityApplyRows(cityState);
-  scene.style.setProperty("--rows-scale", String(CITY_ROWS / CITY_ROWS_BASE));
-  cityApplySleepy();
-  applyCityTimeOfDay(scene);
-
-  var active = cityActiveItem();
-  var hasItems = cityState.buildings.length > 0;
-  sky.innerHTML = "";
-  sky.classList.toggle("placement-mode", !!active);
-  scene.classList.toggle("is-empty", !hasItems && !active);
-
-  if (!hasItems && !active) {
-    sky.innerHTML = '<p class="pixel-city-empty-msg">Şehrin henüz boş — market\'ten bina alınca burada canlanacak!</p>';
-    return;
-  }
-  renderExistingBuildings(sky);
-
-  if (active) {
-    var isMove = !!movingId && !pendingBuilding;
-    var hint = document.createElement("div");
-    hint.className = "pixel-city-placement-hint";
-    var msg = document.createElement("span");
-    msg.textContent = (isMove ? "✋ Yeni yerini seç: " : "📍 Yerleştirmek için bir kareye tıkla: ") + active.emoji + " " + active.name;
-    var cancel = document.createElement("button");
-    cancel.type = "button";
-    cancel.id = "cancelPlacementBtn";
-    cancel.textContent = "Vazgeç";
-    cancel.addEventListener("click", function (e) {
-      e.stopPropagation();
-      cancelPendingPlacement();
-    });
-    var rotBtn = document.createElement("button");
-    rotBtn.type = "button";
-    rotBtn.id = "rotatePlacementBtn";
-    rotBtn.textContent = "↻ Döndür (R)";
-    rotBtn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      rotateActiveOrSelected();
-    });
-    hint.appendChild(msg);
-    hint.appendChild(rotBtn);
-    hint.appendChild(cancel);
-    sky.appendChild(hint);
-
-    var ghost = document.createElement("div");
-    ghost.className = "pcs-ghost";
-    ghost.id = "pcsGhost";
-    ghost.style.display = "none";
-    ghost.style.setProperty("--span", String(cityItemSpan(active)));
-    ghost.style.setProperty("--hs", String(cityItemHs(active)));
-    if (cityIsRoad(active)) {
-      var roadPrev = document.createElement("div");
-      roadPrev.className = "pcs-ghost-road";
-      roadPrev.innerHTML = roadTileSvg(cityRoadPreviewMask(active));
-      ghost.appendChild(roadPrev);
-    } else {
-      ghost.appendChild(cityItemSprite(active));
-    }
-    sky.appendChild(ghost);
-    if (cityLastPointer) handleCityLayerMove(cityLastPointer);
-    return;
-  }
-
-  var sel = selectedCityItemId
-    ? cityState.buildings.filter(function (b) { return b.id === selectedCityItemId; })[0]
-    : null;
-  if (sel) {
-    var span = cityItemSpan(sel);
-    var type = cityTypeOf(sel);
-    var bubble = document.createElement("div");
-    bubble.className = "pcs-bubble";
-    var leftPct = Math.max(14, Math.min(86, ((sel.gx + span / 2) / CITY_COLS) * 100));
-    bubble.style.left = leftPct + "%";
-    bubble.style.top = ((sel.gy + 1) / CITY_ROWS * 100) + "%";
-    bubble.style.setProperty("--depth", String(cityDepth(sel.gy)));
-    bubble.style.setProperty("--hs", String(cityIsRoad(sel) ? 0.5 : cityItemHs(sel)));
-    function addBtn(label, cls, fn) {
-      var btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = label;
-      if (cls) btn.className = cls;
-      btn.addEventListener("click", function (e) { e.stopPropagation(); fn(); });
-      bubble.appendChild(btn);
-    }
-    addBtn("↻ Döndür", "", rotateActiveOrSelected);
-    addBtn("✋ Taşı", "", startMovingSelected);
-    if (sel.name === "Tabela") addBtn("✏️ Yazı", "", editSelectedSignLabel);
-    if (type && type.population > 0 && (sel.stars || 0) < CITY_UPGRADE.maxStars) addBtn("⭐ Yükselt · " + cityUpgradeCost(type, sel.stars || 0) + " altın", "", upgradeSelectedCityItem);
-    addBtn("🗑 Sil", "danger", removeSelectedCityItem);
-    addBtn("✕", "", function () { selectedCityItemId = null; renderPixelCityScene(); });
-    sky.appendChild(bubble);
-  }
-}
-function cityCellFromEvent(e, span) {
-  var layer = document.getElementById("pixelCityBuildings");
-  var rect = layer.getBoundingClientRect();
-  var fx = (e.clientX - rect.left) / Math.max(1, rect.width);
-  var fy = (e.clientY - rect.top) / Math.max(1, rect.height);
-  var gx = Math.max(0, Math.min(CITY_COLS - span, Math.round(fx * CITY_COLS - span / 2)));
-  var gy = Math.max(0, Math.min(CITY_ROWS - 1, Math.floor(fy * CITY_ROWS)));
-  return { gx: gx, gy: gy };
-}
-var cityLastPointer = null;
-function handleCityLayerMove(e) {
-  cityLastPointer = { clientX: e.clientX, clientY: e.clientY };
-  var active = cityActiveItem();
-  var ghost = document.getElementById("pcsGhost");
-  if (!active || !ghost) return;
-  var span = cityItemSpan(active);
-  var cell = cityCellFromEvent(e, span);
-  var ok = cityCanPlace(cell.gx, cell.gy, span, cityOccupancy(cityState.buildings, active.id));
-  ghost.style.display = "block";
-  ghost.style.left = (cell.gx / CITY_COLS * 100) + "%";
-  ghost.style.top = (cell.gy / CITY_ROWS * 100) + "%";
-  ghost.style.width = (span / CITY_COLS * 100) + "%";
-  ghost.style.height = (100 / CITY_ROWS) + "%";
-  ghost.style.setProperty("--depth", String(cityDepth(cell.gy)));
-  ghost.classList.toggle("is-invalid", !ok);
 }
 function placeActiveItem(active, cell) {
   var span = cityItemSpan(active);
@@ -1073,42 +860,15 @@ function placeActiveItem(active, cell) {
   renderCity();
   renderCityViewAll();
 }
-function handleCityLayerClick(e) {
-  var target = e.target;
-  if (target && target.closest && target.closest(".pixel-city-placement-hint")) return;
-  if (target && target.closest && target.closest(".pcs-bubble")) return;
-  var active = cityActiveItem();
-  if (active) {
-    var span = cityItemSpan(active);
-    var cell = cityCellFromEvent(e, span);
-    var occ = cityOccupancy(cityState.buildings, active.id);
-    if (!cityCanPlace(cell.gx, cell.gy, span, occ)) {
-      handleCityLayerMove(e);
-      return;
-    }
-    placeActiveItem(active, cell);
-    return;
-  }
-  var itemEl = (target && target.closest) ? target.closest(".pcs-item") : null;
-  var pickedId = itemEl ? itemEl.getAttribute("data-id") : null;
-  if (!pickedId) {
-    // Küçük süslere (bank, çiçeklik…) isabet ettirmek zor olabilir: tıklanan karedeki yapıyı seç
-    var c = cityCellFromEvent(e, 1);
-    pickedId = cityOccupancy(cityState.buildings)[c.gx + "," + c.gy] || null;
-  }
-  selectedCityItemId = pickedId;
-  renderPixelCityScene();
-}
 function renderCityViewAll() {
+  cityApplyRows(cityState);   // genişleme sayısına göre sıra sayısı (başka cihazdan gelen durum dahil)
   renderMarket();
-  renderPixelCityScene();
   renderCityViewStats();
   cityCheckProgress();
-  if (typeof City3D !== "undefined" && City3D.isOn()) City3D.refresh();   // 3D önizleme açıkken değişiklikleri yansıt
+  if (typeof City3D !== "undefined") { City3D.refresh(); City3D.refreshNow(); }   // 3D şehri değişikliklere göre tazele
 }
 function initCityView() {
   var dateEl = document.getElementById("cityViewDate");
-  setupPixelCityScenery();
   loadCity().then(function (data) {
     cityState = data;
     if (dateEl) {

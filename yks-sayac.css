@@ -2150,18 +2150,10 @@
   .city-meta-hint { font-size: 12px; color: var(--ink-dim); line-height: 1.5; }
   .city-meta-x { background: none; border: none; color: var(--ink-dim); cursor: pointer; padding: 0 2px; font-size: 13px; }
   .city-meta-x:hover { color: var(--danger); }
-  .pixel-city-3d {
-    position: relative; width: 100%; overflow: hidden; border-radius: 10px; border: 1px dashed var(--rule);
-    height: calc(clamp(380px, 58vh, 560px) * var(--rows-scale, 1));
-  }
-  .pixel-city-3d[hidden] { display: none; }
-  .city3d-hint {
-    position: absolute; left: 8px; bottom: 6px; z-index: 2; font-size: 11px; color: #fff; background: rgba(0, 0, 0, 0.45);
-    padding: 3px 8px; border-radius: 6px; pointer-events: none;
-  }
-  .pixel-city-scene { transition: filter 0.8s ease; }
-  .pixel-city-scene.is-sleepy { filter: saturate(0.4) brightness(0.88); }
-  .pcs-star-badge { position: absolute; top: -2px; right: -4px; font-size: calc(var(--cw) * 0.26); line-height: 1; pointer-events: none; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+  
+  
+  
+  
   .city-card-overlay { position: fixed; inset: 0; z-index: 10000; background: rgba(0, 0, 0, 0.75); display: flex; align-items: center; justify-content: center; padding: 16px; }
   .city-card-box { max-height: 100%; display: flex; flex-direction: column; align-items: center; gap: 12px; }
   .city-card-box img { max-height: calc(100vh - 110px); max-width: 100%; border-radius: 12px; }
@@ -2251,12 +2243,8 @@
     object-fit: contain;
   }
 
-  .city-market-emoji img.pcs-lit { display: none; }
-  .city-market-anim {
-    background-repeat: no-repeat;
-    image-rendering: pixelated;
-    background-position: 0 0;
-  }
+  
+  
 
   .city-market-name {
     font-family: "IBM Plex Serif", serif;
@@ -2321,98 +2309,35 @@
   }
 
   /* ---- Şehir sahnesi: gökyüzü / tepeler / zemin / yerleşim katmanı / ana yol ---- */
-  .pixel-city-scene {
-    --sky-top: #5fb0ea; --sky-bot: #d3edf8;
-    --grass-a: #63a05a; --grass-b: #4d8a4b;
-    --hill-a: #9cc4b0; --hill-b: #7fae95;
-    --cloud: #ffffff;
-    position: relative;
-    height: calc(clamp(380px, 58vh, 560px) * var(--rows-scale, 1));
-    container-type: inline-size;
-    border: 1px dashed var(--rule);
-    border-radius: var(--radius);
-    overflow: hidden;
-    background: var(--sky-top);
-    --cw: calc(100cqw / 14);
-  }
-  .pixel-city-scene[data-tod="dawn"] {
-    --sky-top: #6f7fc4; --sky-bot: #ffc9a3; --grass-a: #5b9662; --grass-b: #4a8049;
-    --hill-a: #b59ab0; --hill-b: #9a86a8; --cloud: #ffe3d0;
-  }
-  .pixel-city-scene[data-tod="dusk"] {
-    --sky-top: #3b3a78; --sky-bot: #f08a5d; --grass-a: #4a7f55; --grass-b: #3d6b47;
-    --hill-a: #6b5b86; --hill-b: #574c78; --cloud: #f6b79a;
-  }
-  .pixel-city-scene[data-tod="night"] {
-    --sky-top: #08102b; --sky-bot: #1f2f66; --grass-a: #2f5a4a; --grass-b: #25473f;
-    --hill-a: #2a3560; --hill-b: #222b52; --cloud: #3a4a7a;
-  }
+  
+  
+  
+  
 
-  .pcs-sky {
-    position: absolute; left: 0; right: 0; top: 0; height: 48%;
-    background: linear-gradient(to bottom, var(--sky-top), var(--sky-bot));
-  }
+  
 
-  .pcs-orb {
-    position: absolute; width: 34px; height: 34px; top: 9%; right: 12%;
-    background: #ffe27a;
-    clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
-  }
-  .pixel-city-scene[data-tod="dawn"] .pcs-orb { right: auto; left: 10%; top: 24%; background: #ffd08a; }
-  .pixel-city-scene[data-tod="dusk"] .pcs-orb { right: 10%; top: 25%; background: #ffb26b; }
-  .pixel-city-scene[data-tod="night"] .pcs-orb { right: auto; left: 14%; top: 10%; background: #f1efe0; }
+  
+  
+  
+  
 
-  .pcs-stars {
-    position: absolute; left: 0; top: 0; width: 2px; height: 2px;
-    background: transparent; opacity: 0; transition: opacity 0.6s;
-    box-shadow: 1130px 23px #fff, 716px 157px #fff, 1738px 159px #fff, 599px 26px #fff, 1053px 92px #fff, 812px 110px #fff, 46px 12px #fff, 220px 117px #fff, 1343px 61px #fff, 1652px 93px #fff, 183px 131px #fff, 682px 159px #fff, 1118px 111px #fff, 1720px 190px #fff, 416px 118px #fff, 357px 60px #fff, 896px 204px #fff, 843px 176px #fff, 1631px 179px #fff, 1160px 138px #fff, 410px 143px #fff, 1388px 112px #fff, 619px 75px #fff, 1056px 196px #fff, 458px 109px #fff, 1617px 124px #fff, 1064px 40px #fff, 1548px 82px #fff, 1557px 80px #fff, 1210px 185px #fff, 1329px 124px #fff, 821px 162px #fff, 1745px 202px #fff, 1841px 29px #fff, 1505px 98px #fff, 1764px 39px #fff, 548px 42px #fff, 1418px 91px #fff, 1650px 21px #fff, 1138px 105px #fff, 342px 110px #fff, 1288px 171px #fff, 880px 123px #fff, 584px 162px #fff, 1358px 43px #fff, 665px 194px #fff;
-  }
-  .pixel-city-scene[data-tod="night"] .pcs-stars { opacity: 0.9; }
+  
+  
 
-  .pcs-cloud {
-    position: absolute; left: 0; width: 6px; height: 6px; background: transparent;
-    box-shadow: 12px 0px var(--cloud), 18px 0px var(--cloud), 6px 6px var(--cloud), 12px 6px var(--cloud), 18px 6px var(--cloud), 24px 6px var(--cloud), 0px 12px var(--cloud), 6px 12px var(--cloud), 12px 12px var(--cloud), 18px 12px var(--cloud), 24px 12px var(--cloud), 30px 12px var(--cloud);
-    transform: translateX(-80px) scale(1.7);
-    transform-origin: 0 0;
-    animation: pcs-drift 140s linear infinite;
-    opacity: 0.95;
-  }
-  .pixel-city-scene[data-tod="night"] .pcs-cloud { opacity: 0.5; }
-  @keyframes pcs-drift {
-    from { transform: translateX(-80px) scale(1.7); }
-    to { transform: translateX(calc(100cqw + 80px)) scale(1.7); }
-  }
+  
+  
+  
 
-  .pcs-hills-back, .pcs-hills-front { position: absolute; left: 0; right: 0; }
-  .pcs-hills-back {
-    top: 18%; height: 22%; background: var(--hill-b);
-    clip-path: polygon(0 100%, 0 55%, 6% 55%, 6% 40%, 14% 40%, 14% 26%, 26% 26%, 26% 42%, 34% 42%, 34% 58%, 46% 58%, 46% 30%, 58% 30%, 58% 12%, 70% 12%, 70% 35%, 82% 35%, 82% 50%, 92% 50%, 92% 38%, 100% 38%, 100% 100%);
-  }
-  .pcs-hills-front {
-    top: 26%; height: 15%; background: var(--hill-a);
-    clip-path: polygon(0 100%, 0 45%, 10% 45%, 10% 62%, 22% 62%, 22% 30%, 36% 30%, 36% 55%, 50% 55%, 50% 40%, 64% 40%, 64% 66%, 78% 66%, 78% 35%, 90% 35%, 90% 58%, 100% 58%, 100% 100%);
-  }
+  
+  
+  
 
-  .pcs-ground {
-    position: absolute; left: 0; right: 0; top: 34%; bottom: 0;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' shape-rendering='crispEdges'%3E%3Cg fill='rgba%280%2C0%2C0%2C0.10%29'%3E%3Crect x='6' y='9' width='2' height='2'/%3E%3Crect x='8' y='7' width='2' height='2'/%3E%3Crect x='30' y='30' width='2' height='2'/%3E%3Crect x='32' y='28' width='2' height='2'/%3E%3Crect x='40' y='6' width='2' height='2'/%3E%3Crect x='14' y='38' width='2' height='2'/%3E%3C/g%3E%3Cg fill='rgba%28255%2C255%2C255%2C0.10%29'%3E%3Crect x='22' y='16' width='2' height='2'/%3E%3Crect x='24' y='14' width='2' height='2'/%3E%3Crect x='4' y='26' width='2' height='2'/%3E%3Crect x='38' y='40' width='2' height='2'/%3E%3C/g%3E%3C/svg%3E"), linear-gradient(to bottom, var(--grass-a), var(--grass-b));
-    background-size: 48px 48px, 100% 100%;
-    image-rendering: pixelated;
-  }
+  
 
   /* yerleşim katmanı: 14 sütun x 5 satır ızgara, ana yolun hemen üstünde */
-  .pixel-city-sky {
-    position: absolute; left: 0; right: 0; top: 34%; bottom: 12px; z-index: 6;
-  }
+  
 
-  .pixel-city-sky.placement-mode {
-    cursor: crosshair;
-    background-image:
-      linear-gradient(to right, rgba(255,255,255,0.22) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(255,255,255,0.22) 1px, transparent 1px);
-    background-size: calc(100% / 14) calc(100% / 5);
-    box-shadow: inset 0 0 0 2px var(--amber);
-  }
+  
 
   .pixel-city-empty-msg, .pixel-city-empty-msg * { pointer-events: none; }
   .pixel-city-empty-msg {
@@ -2438,118 +2363,50 @@
   }
   .pixel-city-placement-hint button:hover { border-color: var(--danger); color: var(--danger); }
 
-  .pcs-item {
-    position: absolute;
-    transform: translate(-50%, -100%);
-    display: flex; align-items: flex-end; justify-content: center;
-  }
-  .pcs-item:not(.pcs-road)::before {
-    content: ""; position: absolute; bottom: -2px; left: 12%; right: 12%; height: 6px;
-    border-radius: 50%; background: rgba(0,0,0,0.20); z-index: -1;
-  }
-  .pcs-item.is-selected { filter: drop-shadow(0 0 2px var(--amber)) drop-shadow(0 0 5px var(--amber)); }
-  .pcs-item.pcs-road { transform: none; z-index: 1; }
-  .pcs-item.pcs-road svg { display: block; width: 100%; height: 100%; }
-  .pcs-item:not(.pcs-road) { cursor: pointer; }
+  
+  
+  
+  
+  
+  
 
-  .pcs-sprite { position: relative; display: flex; align-items: flex-end; justify-content: center; }
-  .pcs-sprite img, .pcs-sprite svg {
-    display: block; image-rendering: pixelated; object-fit: contain;
-    height: calc(var(--cw) * 1.15 * var(--depth, 1) * var(--hs, 1));
-    width: auto;
-    max-width: calc(var(--cw) * var(--span, 1) * 1.2);
-  }
-  .pcs-sprite > span:not(.pcs-sign-label) { font-size: calc(var(--cw) * 0.45); line-height: 1; }
+  
+  
+  
 
   /* gündüz/gece varyantları: gece ve akşam sahnesinde "_lit" görseli (pencereler yanık) gösterilir */
-  img.pcs-lit { display: none; }
-  .pixel-city-scene[data-tod="dusk"] img.pcs-day,
-  .pixel-city-scene[data-tod="night"] img.pcs-day { display: none; }
-  .pixel-city-scene[data-tod="dusk"] img.pcs-lit,
-  .pixel-city-scene[data-tod="night"] img.pcs-lit { display: block; }
-  .pixel-city-scene[data-tod="dusk"] img.pcs-glow,
-  .pixel-city-scene[data-tod="night"] img.pcs-glow { filter: drop-shadow(0 0 5px rgba(255, 214, 102, 0.9)); }
+  
+  
+  
+  
 
   /* animasyonlu sprite şeridi (trafik lambası): N kareli yatay şerit, steps ile oynatılır */
-  .pcs-sprite .pcs-anim {
-    display: block;
-    height: calc(var(--cw) * 1.15 * var(--depth, 1) * var(--hs, 1));
-    aspect-ratio: var(--ar);
-    background-repeat: no-repeat;
-    background-size: calc(var(--frames) * 100%) 100%;
-    image-rendering: pixelated;
-    animation: pcs-strip var(--ms, 4000ms) steps(var(--frames), jump-none) infinite;
-  }
-  @keyframes pcs-strip {
-    from { background-position: 0 0; }
-    to { background-position: 100% 0; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .pcs-sprite .pcs-anim { animation: none; }
-  }
+  
+  
+  
 
-  .pcs-sprite.is-flipped > img,
-  .pcs-sprite.is-flipped > svg,
-  .pcs-sprite.is-flipped > .pcs-anim,
-  .pcs-sprite.is-flipped > span:not(.pcs-sign-label) { transform: scaleX(-1); }
+  
 
-  .pcs-sign-label {
-    position: absolute; left: 7%; right: 7%; top: 5%; height: 46%;
-    display: flex; align-items: center; justify-content: center;
-    font-family: "IBM Plex Mono", monospace; font-weight: 700;
-    font-size: calc(var(--cw) * 0.115); line-height: 1; color: #2b2117; text-align: center;
-    overflow: hidden; white-space: nowrap; pointer-events: none;
-  }
+  
 
   /* Tabela artık City Pack beyaz panosu: yüz yatay 2%–90%, dikey 8%–30% (aynalıyken yüz sağda) */
-  .pcs-sprite.pcs-sign-board .pcs-sign-label {
-    left: 3%; right: 12%; top: 9%; height: 21%;
-    font-size: calc(var(--cw) * var(--depth, 1) * 0.095);
-  }
-  .pcs-sprite.is-flipped.pcs-sign-board .pcs-sign-label { left: 12%; right: 3%; }
+  
+  
 
-  .pcs-ghost {
-    position: absolute; z-index: 60; pointer-events: none;
-    border: 2px dashed var(--amber); background: rgba(231, 163, 62, 0.16);
-    box-sizing: border-box;
-  }
-  .pcs-ghost.is-invalid { border-color: var(--danger); background: rgba(200, 70, 60, 0.22); }
-  .pcs-ghost .pcs-sprite { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); opacity: 0.75; }
-  .pcs-ghost .pcs-ghost-road { position: absolute; inset: 0; opacity: 0.8; }
-  .pcs-ghost .pcs-ghost-road svg { display: block; width: 100%; height: 100%; }
+  
+  
+  
+  
+  
 
-  .pcs-bubble {
-    position: absolute; z-index: 100; transform: translate(-50%, -100%);
-    display: flex; gap: 6px; padding: 5px 6px; white-space: nowrap;
-    background: var(--panel); border: 1px solid var(--amber); border-radius: 10px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
-    margin-top: calc(var(--cw) * -1.15 * var(--depth, 1) * var(--hs, 1) - 8px);
-  }
-  .pcs-bubble button {
-    font-family: "IBM Plex Mono", monospace; font-size: 11px;
-    padding: 4px 9px; border-radius: 8px;
-    border: 1px solid var(--rule); background: var(--panel-2); color: var(--ink); cursor: pointer;
-  }
-  .pcs-bubble button:hover { border-color: var(--amber); color: var(--amber); }
-  .pcs-bubble button.danger:hover { border-color: var(--danger); color: var(--danger); }
+  
+  
+  
+  
 
-  .pcs-walker {
-    position: absolute; left: 0; top: 0; pointer-events: none;
-    --ws: 26px;
-    width: var(--ws); height: var(--ws);
-    background-repeat: no-repeat;
-    background-size: calc(var(--ws) * 8) var(--ws);
-    image-rendering: pixelated;
-    will-change: transform;
-    animation: pcs-walk-frames 0.8s steps(8) infinite;
-  }
-  @keyframes pcs-walk-frames {
-    from { background-position: 0 0; }
-    to { background-position: calc(var(--ws) * -8) 0; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .pcs-walker { animation: none; }
-  }
+  
+  
+  
 
   @media (max-width: 720px) {
     .city-split-row { flex-direction: column; }
@@ -3210,3 +3067,39 @@
 
 .icon-btn { position: relative; }
 .icon-badge { position: absolute; top: -5px; right: -5px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; background: var(--amber); color: var(--bg); font-size: 9px; font-weight: 700; display: none; align-items: center; justify-content: center; line-height: 1; }
+
+  /* ---- 3D şehir ---- */
+  .pixel-city-3d {
+    position: relative; width: 100%; overflow: hidden; border-radius: 12px; border: 1px solid var(--rule);
+    height: clamp(560px, 82vh, 1000px); background: #bfe6f7; transition: filter 0.8s ease;
+  }
+  .pixel-city-3d canvas { width: 100%; height: 100%; touch-action: none; }
+  .pixel-city-3d.is-sleepy canvas { filter: saturate(0.4) brightness(0.88); }
+  .c3-toolbar {
+    position: absolute; z-index: 5; transform: translate(-50%, -100%); display: flex; flex-wrap: wrap; justify-content: center; gap: 4px;
+    max-width: 92%; padding: 5px; border-radius: 10px; background: rgba(20, 24, 33, 0.92); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  }
+  .c3-toolbar[hidden], .c3-hint[hidden] { display: none; }
+  .c3-toolbar button, .c3-hint button, .c3-hud button {
+    font-family: "IBM Plex Mono", monospace; font-size: 12px; padding: 6px 10px; border-radius: 8px; cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(255, 255, 255, 0.1); color: #fff;
+  }
+  .c3-toolbar button:hover, .c3-hint button:hover, .c3-hud button:hover { background: rgba(255, 255, 255, 0.22); }
+  .c3-toolbar button.danger { border-color: rgba(255, 120, 120, 0.7); color: #ffb3b3; }
+  .c3-hint {
+    position: absolute; z-index: 5; top: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px;
+    max-width: 92%; padding: 8px 12px; border-radius: 10px; background: rgba(20, 24, 33, 0.92); color: #fff; font-size: 13px;
+  }
+  .c3-hud { position: absolute; z-index: 4; right: 10px; top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .c3-hud button { width: 38px; height: 38px; padding: 0; font-size: 16px; }
+  .c3-tip {
+    position: absolute; z-index: 3; left: 8px; bottom: 6px; max-width: calc(100% - 16px); font-size: 11px; color: #fff;
+    background: rgba(0, 0, 0, 0.45); padding: 3px 8px; border-radius: 6px; pointer-events: none;
+  }
+  .c3-fatal { position: absolute; inset: 0; margin: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: #333; z-index: 6; }
+  @media (min-width: 1100px) {
+    .city-view-inner { max-width: min(1600px, 97vw); }
+    .city-split-row { flex-direction: row; align-items: flex-start; }
+    .city-pixel-col { flex: 1 1 0; min-width: 0; }
+    .city-market-col { flex: 0 0 340px; max-height: 82vh; overflow: auto; }
+  }

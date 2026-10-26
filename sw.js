@@ -1,6 +1,6 @@
 // YKS Sayaç Service Worker — ağ öncelikli, çevrimdışıyken önbellek.
 // Sürüm numarası ve dosya listesi her yayında yayın betiği tarafından doldurulur (aşağıdaki iki satır).
-var VERSION = "3.14.0";
+var VERSION = "3.15.0";
 var CACHE = "yks-sayac-" + VERSION;
 var FILES = [
   "./",
@@ -12,7 +12,6 @@ var FILES = [
   "vendor/firebase-auth-compat.js",
   "vendor/firebase-firestore-compat.js",
   "yks-sayac-cloud.js",
-  "yks-sayac-images.js",
   "yks-sayac-core.js",
   "yks-sayac-backup.js",
   "yks-sayac-update.js",
@@ -21,8 +20,8 @@ var FILES = [
   "yks-sayac-notes.js",
   "yks-sayac-study.js",
   "yks-sayac-city-sprites.js",
+  "yks-sayac-city3d.js",
   "yks-sayac-city.js",
-  "yks-sayac-city-walkers.js",
   "yks-sayac-focus.js",
   "yks-sayac-ui.js",
   "yks-sayac-pip.js",
