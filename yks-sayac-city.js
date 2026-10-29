@@ -4,7 +4,7 @@
 // Yükleme sırası yks-sayac.html içindeki <script> sırasıdır.
 // ============================================================================
 
-var cityState = { buildings: [], coins: 0, debuffSessionsLeft: 0 };
+var cityState = { buildings: [], coins: 0, debuffSessionsLeft: 0, layoutV: 2 };
 function cityKey() { return "focus-city"; }
 function loadCity() {
   return storageGet(cityKey()).then(function (value) {
@@ -15,11 +15,11 @@ function loadCity() {
           if (typeof parsed.coins !== "number") parsed.coins = 0;
           if (typeof parsed.debuffSessionsLeft !== "number") parsed.debuffSessionsLeft = 0;
           cityApplyRows(parsed);   // kayıtlı genişleme kadar sıra; yerleşim düzeltmesinden ÖNCE
-          return normalizeCityLayout(cityMigrateRemoved(parsed));
+          return normalizeCityLayout(cityMigrateLayout(cityMigrateRemoved(parsed)));
         }
       } catch (e) {}
     }
-    return { buildings: [], coins: 0, debuffSessionsLeft: 0 };
+    return { buildings: [], coins: 0, debuffSessionsLeft: 0, layoutV: CITY_LAYOUT_V };
   });
 }
 // Depodan yükleme tamamlanmadan ilerleme (seviye/rozet) ödülü verilmez: boş varsayılan durum gerçek şehrin üzerine yazılmasın.
@@ -311,7 +311,7 @@ function cityCheckProgress() {
 }
 // ---- Aşama 3: bina yıldızları (yükseltme), yeni mahalle (ızgara genişletme), canlı şehir, haftalık şehir kartı ----
 var CITY_UPGRADE = { maxStars: 2, popBonus: 0.25, costFrac: [0.5, 1.0] };   // her yıldız nüfusu +%25; maliyet = yapı fiyatının 0,5× / 1,0×
-var CITY_ROWS_BASE = 5;
+var CITY_ROWS_BASE = 12;   // v3.16.0: 5 -> 12 (şehir alanı büyütüldü)
 var CITY_EXPANSIONS = [ { cost: 150, level: 2 }, { cost: 400, level: 3 } ];  // her genişleme +2 sıra; Şehir / Metropol seviyesi ister
 function cityApplyRows(state) { CITY_ROWS = CITY_ROWS_BASE + 2 * ((state && state.expansions) || 0); }
 function cityBuildingPop(b, type) { return Math.round(((type && type.population) || 0) * (1 + CITY_UPGRADE.popBonus * (b.stars || 0))); }
@@ -597,8 +597,20 @@ function accrueStudyGold() {
   }
   if (recovered) cityCelebrate(["💪 Toparlandın: odak cezası kalktı"]);
 }
-// ---- Şehir yerleşimi: 14x5 ızgara, derinlik, yol/dekor ----
-var CITY_COLS = 14, CITY_ROWS = 5;
+// ---- Şehir yerleşimi: 24x12 ızgara (v3.16.0'dan önce 14x5), derinlik, yol/dekor ----
+var CITY_COLS = 24, CITY_ROWS = 12;
+// Yerleşim sürümü: 2 = 24 sütun x 12 temel sıra. Eski kayıtlar (sürümsüz = 14x5) bir kez ortalanıp öne hizalanır.
+var CITY_LAYOUT_V = 2, CITY_OLD_COLS = 14, CITY_OLD_ROWS_BASE = 5;
+function cityMigrateLayout(state) {
+  if (!state || (state.layoutV || 1) >= CITY_LAYOUT_V) return state;
+  var dx = Math.floor((CITY_COLS - CITY_OLD_COLS) / 2), dy = CITY_ROWS_BASE - CITY_OLD_ROWS_BASE;
+  (state.buildings || []).forEach(function (b) {
+    if (typeof b.gx === "number") b.gx += dx;
+    if (typeof b.gy === "number") b.gy += dy;   // eski ön sıralar yeni alanın önünde kalır, yeni alan arkaya/yanlara eklenir
+  });
+  state.layoutV = CITY_LAYOUT_V;
+  return state;
+}
 var CITY_SELL_RATIO = 0.8; // yapı silinince maliyetin bu kadarı iade edilir
 // Yatay kaç kare kaplar (varsayılan 1). Görünüm 3D modelden gelir (yks-sayac-city3d.js).
 var CITY_LOOK = {
@@ -804,6 +816,16 @@ function renderMarket() {
   if (!grid) return;
   var tabsEl = document.getElementById("cityMarketTabs");
   if (tabsEl) {
+    if (!tabsEl._tabsBound) {   // sekme tıklaması: v3.15.0'da 2D temizliğinde dinleyici kaybolmuştu
+      tabsEl._tabsBound = true;
+      tabsEl.addEventListener("click", function (e) {
+        var btn = e.target && e.target.closest ? e.target.closest(".city-market-tab") : null;
+        var tab = btn ? btn.getAttribute("data-tab") : null;
+        if (!tab || tab === cityMarketTab) return;
+        cityMarketTab = tab;
+        renderMarket();
+      });
+    }
     Array.prototype.forEach.call(tabsEl.querySelectorAll(".city-market-tab"), function (btn) {
       btn.classList.toggle("active", btn.getAttribute("data-tab") === cityMarketTab);
     });

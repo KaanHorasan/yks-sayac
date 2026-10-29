@@ -295,7 +295,7 @@ var City3D = (function () {
     S.cam.updateMatrixWorld(true);
     if (S.lights) {
       var ext = Math.max(cols, rows) * 0.8, sh = S.lights.sun.shadow.camera;
-      sh.left = -ext; sh.right = ext; sh.top = ext; sh.bottom = -ext; sh.near = 1; sh.far = 80; sh.updateProjectionMatrix();
+      sh.left = -ext; sh.right = ext; sh.top = ext; sh.bottom = -ext; sh.near = 1; sh.far = 80 + Math.max(cols, rows) * 3; sh.updateProjectionMatrix();
     }
   }
   function resetView() { S.az = VIEW.az; S.el = VIEW.el; S.zoom = VIEW.zoom; S.tx = 0; S.tz = 0; applyCamera(); requestRender(); }
@@ -313,7 +313,8 @@ var City3D = (function () {
     S.tod = key;
     S.scene.background = new T.Color(c.bg);
     S.lights.hemi.color.set(c.sky); S.lights.hemi.groundColor.set(c.ground); S.lights.hemi.intensity = c.hemi;
-    S.lights.sun.color.set(c.sun); S.lights.sun.intensity = c.sunI; S.lights.sun.position.set(c.pos[0], c.pos[1], c.pos[2]);
+    S.lights.sun.color.set(c.sun); S.lights.sun.intensity = c.sunI; var k = Math.max(1, Math.max(CITY_COLS, CITY_ROWS) / 14);   // büyük şehirde güneş de uzaklaşır (gölge kutusu alanı kapsasın)
+    S.lights.sun.position.set(c.pos[0] * k, c.pos[1] * k, c.pos[2] * k);
   }
 
   function render() {
