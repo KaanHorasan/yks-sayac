@@ -1,7 +1,7 @@
 // Yapı katalogu: fiyat, nüfus, rol ve (2D) kısa görünüm bilgisi. Şehir artık yalnızca 3D çizilir (yks-sayac-city3d.js);
 // buradaki `images` anahtarları sadece görsel varyant seçimi içindir (ev1..ev8 -> 8 farklı ev modeli).
 // Alanlar: role (nüfus oranı için), minLevel (satın alma seviyesi), road (yol), cat/tab (pazar sekmesi), population (süs için 0).
-// pxH / glow / tiny / anim eski 2D alanlarıdır, kullanılmaz.
+// pxH / glow / tiny / anim eski 2D alanlarıdır, kullanılmaz. onRoad: true = dekor yol karesine de konabilir (araç, koni, bariyer).
 
 // Pano (şehrim kartı) ve yedek gösterim: yalnızca emoji.
 function buildingVisualMarkup(b, type) {
@@ -55,15 +55,33 @@ var BUILDING_TYPES = [
   { emoji: "🛑", name: "Yol Levhası", cost: 2, population: 0, cat: "dekor", images: ["cp_sign_1", "cp_sign_2", "cp_sign_3"], pxH: 27, tiny: true },
   { emoji: "🗑️", name: "Çöp Kutusu", cost: 1, population: 0, cat: "dekor", images: ["cp_trash"], pxH: 16, tiny: true },
   { emoji: "🧯", name: "Yangın Musluğu", cost: 1, population: 0, cat: "dekor", images: ["cp_hydrant"], pxH: 14, tiny: true },
-  { emoji: "🚧", name: "Bariyer", cost: 1, population: 0, cat: "dekor", images: ["cp_barrier"], pxH: 11, tiny: true },
-  { emoji: "🔶", name: "Trafik Konisi", cost: 1, population: 0, cat: "dekor", images: ["cp_cone"], pxH: 13, tiny: true },
+  { emoji: "🚧", name: "Bariyer", onRoad: true, cost: 1, population: 0, cat: "dekor", images: ["cp_barrier"], pxH: 11, tiny: true },
+  { emoji: "🔶", name: "Trafik Konisi", onRoad: true, cost: 1, population: 0, cat: "dekor", images: ["cp_cone"], pxH: 13, tiny: true },
   { emoji: "🥤", name: "Otomat", cost: 3, population: 0, cat: "dekor", images: ["cp_vending"], pxH: 32 },
   { emoji: "📦", name: "Koli", cost: 1, population: 0, cat: "dekor", images: ["cp_box_1", "cp_box_2", "cp_box_3"], pxH: 22, tiny: true },
   { emoji: "📢", name: "Reklam Panosu", cost: 4, population: 0, cat: "dekor", images: ["cp_billboard_1", "cp_billboard_2", "cp_billboard_3"], pxH: 66 },
-  { emoji: "🚗", name: "Araba (Kırmızı)", cost: 4, population: 0, cat: "dekor", images: ["cp_car_red"], pxH: 27 },
-  { emoji: "🚙", name: "Araba (Mavi)", cost: 4, population: 0, cat: "dekor", images: ["cp_car_blue"], pxH: 27 },
-  { emoji: "🚚", name: "Kamyon", cost: 6, population: 0, cat: "dekor", images: ["cp_truck"], pxH: 32 },
-  { emoji: "🚐", name: "Yemek Aracı", cost: 6, population: 0, cat: "dekor", images: ["cp_foodtruck"], pxH: 32 }
+  { emoji: "🚗", name: "Araba (Kırmızı)", onRoad: true, cost: 4, population: 0, cat: "dekor", images: ["cp_car_red"], pxH: 27 },
+  { emoji: "🚙", name: "Araba (Mavi)", onRoad: true, cost: 4, population: 0, cat: "dekor", images: ["cp_car_blue"], pxH: 27 },
+  { emoji: "🚚", name: "Kamyon", onRoad: true, cost: 6, population: 0, cat: "dekor", images: ["cp_truck"], pxH: 32 },
+  { emoji: "🚐", name: "Yemek Aracı", onRoad: true, cost: 6, population: 0, cat: "dekor", images: ["cp_foodtruck"], pxH: 32 },
+  // ---- Doğa dekoru (v3.17.0, Kenney Nature Kit): yarım kare hassasiyetle yerleşir ----
+  { emoji: "🌹", name: "Çiçek (Kırmızı)", cost: 1, population: 0, cat: "dekor" },
+  { emoji: "🌼", name: "Çiçek (Sarı)", cost: 1, population: 0, cat: "dekor" },
+  { emoji: "🌷", name: "Çiçek (Mor)", cost: 1, population: 0, cat: "dekor" },
+  { emoji: "🌿", name: "Çalı", cost: 1, population: 0, cat: "dekor" },
+  { emoji: "🪨", name: "Kaya", cost: 1, population: 0, cat: "dekor" },
+  { emoji: "🪵", name: "Kütük", cost: 1, population: 0, cat: "dekor" },
+  { emoji: "🍄", name: "Mantar", cost: 1, population: 0, cat: "dekor" },
+  { emoji: "🎃", name: "Balkabağı", cost: 1, population: 0, cat: "dekor" },
+  { emoji: "🪴", name: "Saksı", cost: 1, population: 0, cat: "dekor" },
+  { emoji: "🧱", name: "Çit", cost: 1, population: 0, cat: "dekor" },
+  { emoji: "🔥", name: "Kamp Ateşi", cost: 2, population: 0, cat: "dekor" },
+  { emoji: "🌲", name: "Ladin Ağacı", cost: 2, population: 0, cat: "dekor" },
+  { emoji: "🌳", name: "Meşe Ağacı", cost: 2, population: 0, cat: "dekor" },
+  { emoji: "🍂", name: "Sonbahar Ağacı", cost: 2, population: 0, cat: "dekor" },
+  { emoji: "⛺", name: "Çadır", cost: 4, population: 0, cat: "dekor" },
+  { emoji: "🗿", name: "Obelisk", cost: 6, population: 0, cat: "dekor" },
+  { emoji: "🗽", name: "Heykel Sütunu", cost: 8, population: 0, cat: "dekor" }
 ];
 // Nüfus rolden hesaplanır (tek kaynak: CITY_POP_RATIO); en az 1.
 BUILDING_TYPES.forEach(function (t) {

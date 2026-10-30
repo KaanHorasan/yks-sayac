@@ -50,7 +50,25 @@ var City3D = (function () {
     "Çöp Kutusu": { box: { w: 0.3, h: 0.4, d: 0.3, color: 0x4a8a5a } },
     "Yangın Musluğu": { box: { w: 0.2, h: 0.35, d: 0.2, color: 0xc0392b } },
     "Otomat": { box: { w: 0.36, h: 0.7, d: 0.3, color: 0x3a6fb0 } },
-    "Koli": { box: { w: 0.3, h: 0.25, d: 0.3, color: 0xb98b55 } }
+    "Koli": { box: { w: 0.3, h: 0.25, d: 0.3, color: 0xb98b55 } },
+    // Doğa dekoru (Kenney Nature Kit, models/nat/): yarım karelik hücreye sığacak boyda
+    "Çiçek (Kırmızı)": { m: ["nat/flower_redA", "nat/flower_redB", "nat/flower_redC"], fixed: 1.6 },
+    "Çiçek (Sarı)": { m: ["nat/flower_yellowA", "nat/flower_yellowB", "nat/flower_yellowC"], fixed: 1.6 },
+    "Çiçek (Mor)": { m: ["nat/flower_purpleA", "nat/flower_purpleB", "nat/flower_purpleC"], fixed: 1.6 },
+    "Çalı": { m: ["nat/plant_bush", "nat/plant_bushDetailed", "nat/plant_bushLarge", "nat/plant_bushSmall", "nat/plant_bushTriangle"], fixed: 1.1 },
+    "Kaya": { m: ["nat/rock_smallA", "nat/rock_smallC", "nat/stone_smallA", "nat/rock_smallFlatA"], fixed: 1.1 },
+    "Kütük": { m: ["nat/stump_old", "nat/stump_round", "nat/log"], fixed: 1.3 },
+    "Mantar": { m: ["nat/mushroom_red", "nat/mushroom_tan", "nat/mushroom_redGroup"], fixed: 1.8 },
+    "Balkabağı": { m: ["nat/crop_pumpkin"], fixed: 1.5 },
+    "Saksı": { m: ["nat/pot_large"], fixed: 1 },
+    "Çit": { m: ["nat/fence_simple", "nat/fence_planks"], fixed: 1 },
+    "Kamp Ateşi": { m: ["nat/campfire_logs"], fixed: 1.7 },
+    "Ladin Ağacı": { m: ["nat/tree_pineTallA", "nat/tree_pineDefaultA", "nat/tree_pineSmallA", "nat/tree_pineRoundA"], fixed: 0.7 },
+    "Meşe Ağacı": { m: ["nat/tree_oak", "nat/tree_default", "nat/tree_detailed", "nat/tree_fat"], fixed: 0.7 },
+    "Sonbahar Ağacı": { m: ["nat/tree_default_fall", "nat/tree_oak_fall"], fixed: 0.7 },
+    "Çadır": { m: ["nat/tent_smallClosed"], fixed: 1 },
+    "Obelisk": { m: ["nat/statue_obelisk"], fixed: 1 },
+    "Heykel Sütunu": { m: ["nat/statue_column"], fixed: 1 }
   };
 
   // Yol parçaları: taban yönleri (Kenney parçalarının geometrisinden çözüldü): end={E}, straight={E,W}, bend={W,S}, tee={E,W,S}
@@ -147,11 +165,104 @@ var City3D = (function () {
     return Promise.resolve(assemble(makeBox(), true));
   }
 
-  // city: { cols, rows, buildings, typeOf(b), isRoad(b) }; loadModel("kit/dosya") -> Promise<Object3D>
+  // ---- Süs bitki örtüsü (v3.17.0): kaydedilmez; öğrenci başına sabit rastgele; yapı/yol/dekor gelen yerden kalkar ----
+  // [model, ölçek]: Kenney Nature Kit modelleri 1 birim = 1 kare ölçeğindedir; ağaçlar evlerle orantılı küçültülür.
+  var SC = {
+    tree: [["nat/tree_default", 0.7], ["nat/tree_oak", 0.75], ["nat/tree_detailed", 0.7], ["nat/tree_fat", 0.8], ["nat/tree_pineDefaultA", 0.7],
+           ["nat/tree_pineTallA", 0.65], ["nat/tree_pineRoundA", 0.7], ["nat/tree_pineSmallA", 0.85], ["nat/tree_small", 0.85], ["nat/tree_thin", 0.7],
+           ["nat/tree_simple", 0.7], ["nat/tree_cone", 0.7], ["nat/tree_default_fall", 0.7], ["nat/tree_oak_fall", 0.75]],
+    bush: [["nat/plant_bush", 1.2], ["nat/plant_bushDetailed", 1], ["nat/plant_bushLarge", 1.2], ["nat/plant_bushSmall", 1.3], ["nat/plant_bushTriangle", 1.1]],
+    flower: [["nat/flower_redA", 1.6], ["nat/flower_redB", 1.6], ["nat/flower_redC", 1.6], ["nat/flower_yellowA", 1.6], ["nat/flower_yellowB", 1.6],
+             ["nat/flower_yellowC", 1.6], ["nat/flower_purpleA", 1.6], ["nat/flower_purpleB", 1.6], ["nat/flower_purpleC", 1.6]],
+    grass: [["nat/grass", 1.2], ["nat/grass_large", 1.1], ["nat/grass_leafs", 1.4], ["nat/grass_leafsLarge", 1.1]],
+    rock: [["nat/rock_smallA", 1.1], ["nat/rock_smallC", 1.3], ["nat/stone_smallA", 1.1], ["nat/rock_smallFlatA", 1.4], ["nat/rock_largeA", 0.6]],
+    misc: [["nat/mushroom_red", 1.7], ["nat/mushroom_tan", 1.7], ["nat/mushroom_redGroup", 1.5], ["nat/log", 1.2], ["nat/stump_old", 1.1], ["nat/stump_round", 1.1]]
+  };
+  // kenara uzaklığa göre: dış halka sık orman, içeri doğru seyrelir (bina yapılacak yer rahat kalsın)
+  var SC_TREE_P = [0.85, 0.55, 0.26];   // kenar 0, 1, 2; daha içeride SC_TREE_IN
+  var SC_TREE_IN = 0.07;
+  var SC_OTHER_EDGE = [["bush", 0.12], ["rock", 0.05], ["flower", 0.1], ["grass", 0.1], ["misc", 0.03]];
+  var SC_OTHER_IN = [["bush", 0.06], ["rock", 0.04], ["flower", 0.16], ["grass", 0.12], ["misc", 0.03]];
+  function rnd(seed, a, b, c) {   // (tohum, a, b, c) -> [0,1) sabit sahte rastgele
+    var h = (seed ^ Math.imul(a + 1, 374761393) ^ Math.imul(b + 1, 668265263) ^ Math.imul(c + 1, 2246822519)) >>> 0;
+    h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0; h = Math.imul(h ^ (h >>> 13), 3266489917) >>> 0; h = (h ^ (h >>> 16)) >>> 0;
+    return h / 4294967296;
+  }
+  // Saf: hangi karelere hangi süs konur. Dönen: [{ m, x, z, rot, s }]
+  function planScenery(city, seed) {
+    var cols = city.cols, rows = city.rows, main = {}, sub = {}, out = [];
+    city.buildings.forEach(function (b) {
+      var type = city.typeOf(b); if (!type) return;
+      if (city.isDecor && city.isDecor(b)) { var q = city.subOf(b); if (q) sub[q.sx + "," + q.sy] = true; return; }
+      var span = type.span || 1;
+      for (var i = 0; i < span; i++) main[(b.gx + i) + "," + b.gy] = true;
+    });
+    for (var gy = 0; gy < rows; gy++) for (var gx = 0; gx < cols; gx++) {
+      if (main[gx + "," + gy]) continue;
+      var edge = Math.min(gx, cols - 1 - gx, gy, rows - 1 - gy);
+      var pTree = edge < SC_TREE_P.length ? SC_TREE_P[edge] : SC_TREE_IN;
+      var kind = null;
+      if (rnd(seed, gx, gy, 1) < pTree) kind = "tree";
+      else {
+        var k = rnd(seed, gx, gy, 3), acc = 0, tbl = edge <= 2 ? SC_OTHER_EDGE : SC_OTHER_IN;
+        for (var t = 0; t < tbl.length; t++) { acc += tbl[t][1]; if (k < acc) { kind = tbl[t][0]; break; } }
+      }
+      if (!kind) continue;
+      var n = 1;
+      if (kind === "flower") n = 2 + Math.floor(rnd(seed, gx, gy, 4) * 2);
+      else if (kind === "grass") n = 1 + Math.floor(rnd(seed, gx, gy, 4) * 2);
+      else if (kind === "tree" && edge === 0 && rnd(seed, gx, gy, 4) < 0.35) n = 2;
+      var base = Math.floor(rnd(seed, gx, gy, 5) * 4), list = SC[kind];
+      for (var i2 = 0; i2 < n; i2++) {
+        var slot = (base + i2) % 4, sx = gx * 2 + (slot & 1), sy = gy * 2 + (slot >> 1);
+        if (sub[sx + "," + sy]) continue;   // bu yarım karede oyuncunun dekoru var
+        var pick = list[Math.floor(rnd(seed, gx, gy, 20 + i2) * list.length) % list.length];
+        out.push({
+          m: pick[0],
+          x: (sx + 0.5) / 2 - cols / 2 + (rnd(seed, gx, gy, 30 + i2) - 0.5) * 0.14,
+          z: (sy + 0.5) / 2 - rows / 2 + (rnd(seed, gx, gy, 40 + i2) - 0.5) * 0.14,
+          rot: rnd(seed, gx, gy, 50 + i2) * Math.PI * 2,
+          s: pick[1] * (0.85 + rnd(seed, gx, gy, 60 + i2) * 0.3)
+        });
+      }
+    }
+    return out;
+  }
+  // Süsleri model başına InstancedMesh olarak ekler (yüzlerce süs birkaç çizim çağrısı).
+  function addScenery(T, loadModel, group, items, dispose, report) {
+    var byModel = {};
+    items.forEach(function (it) { (byModel[it.m] = byModel[it.m] || []).push(it); });
+    return Promise.all(Object.keys(byModel).map(function (m) {
+      return loadModel(m).then(function (obj) {
+        obj.updateMatrixWorld(true);
+        var box = new T.Box3().setFromObject(obj);
+        if (box.isEmpty()) return;
+        var center = box.getCenter(new T.Vector3());
+        var offset = new T.Matrix4().makeTranslation(-center.x, -box.min.y, -center.z);
+        var inv = new T.Matrix4().copy(obj.matrixWorld).invert(), list = byModel[m], up = new T.Vector3(0, 1, 0);
+        obj.traverse(function (mesh) {
+          if (!mesh.isMesh || !mesh.geometry || !mesh.material) return;
+          var rel = mesh.matrixWorld.clone().premultiply(inv);
+          var im = new T.InstancedMesh(mesh.geometry, mesh.material, list.length);
+          im.castShadow = true; im.receiveShadow = true; im.frustumCulled = false; im.userData.scenery = true;
+          list.forEach(function (it, i) {
+            var M = new T.Matrix4().compose(new T.Vector3(it.x, 0, it.z), new T.Quaternion().setFromAxisAngle(up, it.rot), new T.Vector3(it.s, it.s, it.s));
+            M.multiply(offset).multiply(rel);
+            im.setMatrixAt(i, M);
+          });
+          im.instanceMatrix.needsUpdate = true;
+          group.add(im); dispose.push(im); report.sceneryMeshes++;
+        });
+        report.scenery += list.length;
+      }, function () { report.missing.push(m); });
+    }));
+  }
+
+  // city: { cols, rows, buildings, typeOf(b), isRoad(b), isDecor?(b), subOf?(b), seed? }; loadModel("kit/dosya") -> Promise<Object3D>
   function buildCity(T, loadModel, city) {
     var cols = city.cols, rows = city.rows;
     var group = new T.Group();
-    var report = { placed: 0, roads: 0, fallback: 0, missing: [], roadCells: [], sprites: 0 };
+    var report = { placed: 0, roads: 0, fallback: 0, missing: [], roadCells: [], sprites: 0, scenery: 0, sceneryMeshes: 0 };
     var dispose = [];   // bu sahneye özgü kaynaklar (modeller önbellekten klonlandığı için paylaşılan geometriye dokunulmaz)
     var holders = {};
     group.userData.dispose = dispose; group.userData.holders = holders;
@@ -205,7 +316,11 @@ var City3D = (function () {
       }
       jobs.push(makeHolder(T, loadModel, b, type, dispose).then(function (holder) {
         if (holder.userData.fallback) { report.fallback++; if (TYPES[b.name] && TYPES[b.name].m) report.missing.push(holder.userData.file); }
-        holder.position.set(cellX(b.gx, span), 0, cellZ(b.gy));
+        var sub = (city.isDecor && city.isDecor(b)) ? city.subOf(b) : null;   // dekor: yarım kare konumu
+        if (sub) {
+          var onRoad = type.onRoad && roads[Math.floor(sub.sx / 2) + "," + Math.floor(sub.sy / 2)];
+          holder.position.set((sub.sx + 0.5) / 2 - cols / 2, onRoad ? 0.02 : 0, (sub.sy + 0.5) / 2 - rows / 2);
+        } else holder.position.set(cellX(b.gx, span), 0, cellZ(b.gy));
         group.add(holder); holders[b.id] = holder; report.placed++;
         // etiketler: tabela yazısı ve yükseltme yıldızları
         var top = new T.Box3().setFromObject(holder).max.y;
@@ -219,15 +334,20 @@ var City3D = (function () {
         }
       }));
     });
-    return Promise.all(jobs).then(function () { return { group: group, report: report }; });
+    return Promise.all(jobs).then(function () {
+      try { return addScenery(T, loadModel, group, planScenery(city, city.seed || 0), dispose, report); } catch (e) { return null; }
+    }).then(function () { return { group: group, report: report }; }, function () { return { group: group, report: report }; });
   }
 
   // İmleç (ekran) -> zemin düzlemi -> hücre. span: yatay kaç hücre kaplıyor.
-  function cellFromPoint(p, span, cols, rows) {
-    return {
+  // sub=true: dekor için yarım kare (sx, sy) de döner.
+  function cellFromPoint(p, span, cols, rows, sub) {
+    var c = {
       gx: clamp(Math.round(p.x + cols / 2 - span / 2), 0, Math.max(0, cols - span)),
       gy: clamp(Math.floor(p.z + rows / 2), 0, rows - 1)
     };
+    if (sub) { c.sx = clamp(Math.floor((p.x + cols / 2) * 2), 0, cols * 2 - 1); c.sy = clamp(Math.floor((p.z + rows / 2) * 2), 0, rows * 2 - 1); }
+    return c;
   }
 
   // ---- Tarayıcıya bağlama ----
@@ -237,7 +357,7 @@ var City3D = (function () {
     az: VIEW.az, el: VIEW.el, zoom: VIEW.zoom, tx: 0, tz: 0, w: 1, h: 1, raf: 0, ro: null, io: null,
     building: false, again: false, sig: "", tod: "", todTimer: 0, lastReport: null,
     ray: null, plane: null, ptr: {}, ptrCount: 0, gesture: null,
-    ghost: null, ghostKey: "", ghostCell: null, ghostDispose: [], lastCell: null, selRing: null, selKey: "", uiKey: "",
+    ghost: null, ghostKey: "", ghostCell: null, ghostDispose: [], lastCell: null, selRing: null, selKey: "", uiKey: "", gridLines: null, gridKey: "", marker: null, markerKey: "",
     toolbar: null, hint: null, hud: null
   };
 
@@ -268,11 +388,12 @@ var City3D = (function () {
 
   function realCity() {
     return { cols: CITY_COLS, rows: CITY_ROWS, buildings: cityState.buildings.filter(function (b) { return typeof b.gx === "number" && typeof b.gy === "number"; }),
-             typeOf: cityTypeOf, isRoad: cityIsRoad };
+             typeOf: cityTypeOf, isRoad: cityIsRoad, isDecor: cityIsDecor, subOf: citySubOf, seed: sceneSeed() };
   }
+  function sceneSeed() { return hash(typeof currentUserUid !== "undefined" ? currentUserUid : ""); }
   function citySig() {
-    return CITY_COLS + "x" + CITY_ROWS + "|" + cityState.buildings.map(function (b) {
-      return [b.id, b.name, b.gx, b.gy, b.rot || 0, b.stars || 0, b.label || "", b.imageKey || ""].join(":");
+    return CITY_COLS + "x" + CITY_ROWS + "|" + sceneSeed() + "|" + cityState.buildings.map(function (b) {
+      return [b.id, b.name, b.gx, b.gy, b.sx, b.sy, b.rot || 0, b.stars || 0, b.label || "", b.imageKey || ""].join(":");
     }).join(",");
   }
 
@@ -341,9 +462,9 @@ var City3D = (function () {
     var p = new S.T.Vector3();
     return S.ray.ray.intersectPlane(S.plane, p) ? p : null;
   }
-  function cellAt(clientX, clientY, span) {
+  function cellAt(clientX, clientY, span, sub) {
     var p = groundPoint(clientX, clientY);
-    return p ? cellFromPoint(p, span, CITY_COLS, CITY_ROWS) : null;
+    return p ? cellFromPoint(p, span, CITY_COLS, CITY_ROWS, sub) : null;
   }
   function pickId(clientX, clientY) {
     if (S.group) {
@@ -355,8 +476,16 @@ var City3D = (function () {
     }
     var p = groundPoint(clientX, clientY);   // küçük süslere isabet zor olabilir: tıklanan karedeki yapıyı seç
     if (!p) return null;
-    var c = cellFromPoint(p, 1, CITY_COLS, CITY_ROWS);
-    return cityOccupancy(cityState.buildings)[c.gx + "," + c.gy] || null;
+    var c = cellFromPoint(p, 1, CITY_COLS, CITY_ROWS, true);
+    var subId = citySubOccupancy(cityState.buildings)[c.sx + "," + c.sy];   // önce tam o yarım karedeki dekor
+    if (subId) return subId;
+    var occId = cityOccupancy(cityState.buildings)[c.gx + "," + c.gy];
+    if (occId) return occId;
+    var inCell = cityState.buildings.filter(function (b) {   // karedeki herhangi bir dekor
+      var q = cityIsDecor(b) ? citySubOf(b) : null;
+      return q && Math.floor(q.sx / 2) === c.gx && Math.floor(q.sy / 2) === c.gy;
+    })[0];
+    return inCell ? inCell.id : null;
   }
 
   // ---- Yerleştirme hayaleti ----
@@ -364,6 +493,7 @@ var City3D = (function () {
     if (S.ghost) { S.scene.remove(S.ghost); S.ghost = null; }
     S.ghostDispose.forEach(function (d) { if (d && d.dispose) d.dispose(); });
     S.ghostDispose = []; S.ghostKey = "";
+    removeMarker();
   }
   function tintGhost(valid) {
     if (!S.ghost) return;
@@ -371,14 +501,55 @@ var City3D = (function () {
       if (o.isMesh && o.material && o.material.emissive) { o.material.emissive.set(valid ? 0x1a7f37 : 0x9b1c1c); o.material.emissiveIntensity = 0.65; }
     });
   }
+  // ---- Yerleştirme yardımcıları: ızgara çizgileri (bina: ana kare, dekor: yarım kare) + hedef kare vurgusu ----
+  function removeGrid() {
+    if (S.gridLines) { S.scene.remove(S.gridLines); S.gridLines.geometry.dispose(); S.gridLines.material.dispose(); S.gridLines = null; }
+    S.gridKey = "";
+  }
+  function syncGrid(active) {
+    if (!S.scene) return;
+    var step = active ? (cityIsDecor(active) ? 0.5 : 1) : 0, key = step ? step + ":" + CITY_COLS + "x" + CITY_ROWS : "";
+    if (key === S.gridKey) return;
+    removeGrid();
+    if (!step) { requestRender(); return; }
+    var T = S.T, pts = [], x0 = -CITY_COLS / 2, z0 = -CITY_ROWS / 2, i;
+    for (i = 0; i <= Math.round(CITY_COLS / step); i++) { var x = x0 + i * step; pts.push(x, 0, z0, x, 0, -z0); }
+    for (i = 0; i <= Math.round(CITY_ROWS / step); i++) { var z = z0 + i * step; pts.push(x0, 0, z, -x0, 0, z); }
+    var geo = new T.BufferGeometry(); geo.setAttribute("position", new T.Float32BufferAttribute(pts, 3));
+    var mat = new T.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: step < 1 ? 0.38 : 0.2, depthWrite: false });
+    var lines = new T.LineSegments(geo, mat); lines.position.y = 0.012; lines.renderOrder = 1;
+    S.scene.add(lines); S.gridLines = lines; S.gridKey = key;
+    requestRender();
+  }
+  function removeMarker() {
+    if (S.marker && S.scene) { S.scene.remove(S.marker); S.marker.geometry.dispose(); S.marker.material.dispose(); }
+    S.marker = null; S.markerKey = "";
+  }
+  function setMarker(active, cell, ok) {
+    if (!S.scene || !active || !cell) { removeMarker(); return; }
+    var T = S.T, decor = cityIsDecor(active), span = cityItemSpan(active);
+    var w = decor ? 0.46 : span * 0.98, d = decor ? 0.46 : 0.98, key = w + ":" + d;
+    if (!S.marker || S.markerKey !== key) {
+      removeMarker();
+      var m = new T.Mesh(new T.PlaneGeometry(w, d), new T.MeshBasicMaterial({ color: 0x2ecc71, transparent: true, opacity: 0.5, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2; m.renderOrder = 2; S.scene.add(m); S.marker = m; S.markerKey = key;
+    }
+    S.marker.position.set(decor ? (cell.sx + 0.5) / 2 - CITY_COLS / 2 : cell.gx + span / 2 - CITY_COLS / 2, 0.03,
+                          decor ? (cell.sy + 0.5) / 2 - CITY_ROWS / 2 : cell.gy + 0.5 - CITY_ROWS / 2);
+    S.marker.material.color.set(ok ? 0x2ecc71 : 0xe74c3c);
+  }
   function moveGhost(cell) {
     var active = cityActiveItem();
     if (!active || !S.ghost || !cell) return;
-    var span = cityItemSpan(active);
-    S.ghost.position.set(cell.gx + span / 2 - CITY_COLS / 2, 0.02, cell.gy + 0.5 - CITY_ROWS / 2);
+    var span = cityItemSpan(active), decor = cityIsDecor(active);
+    if (decor && typeof cell.sx !== "number") cell = { gx: cell.gx, gy: cell.gy, sx: cell.gx * 2, sy: cell.gy * 2 };   // yapı seçiminden dekora geçiş
+    var ok = cityCanPlaceActive(active, cell);
+    if (decor) S.ghost.position.set((cell.sx + 0.5) / 2 - CITY_COLS / 2, 0.02, (cell.sy + 0.5) / 2 - CITY_ROWS / 2);
+    else S.ghost.position.set(cell.gx + span / 2 - CITY_COLS / 2, 0.02, cell.gy + 0.5 - CITY_ROWS / 2);
     S.ghost.visible = true;
     S.ghostCell = cell;
-    tintGhost(cityCanPlace(cell.gx, cell.gy, span, cityOccupancy(cityState.buildings, active.id)));
+    tintGhost(ok);
+    setMarker(active, cell, ok);
     requestRender();
   }
   function syncGhost() {
@@ -419,6 +590,7 @@ var City3D = (function () {
   function updateOverlays() {
     if (!S.host || !S.scene) return;
     var active = cityActiveItem(), sel = active ? null : selectedBuilding();
+    syncGrid(active);
     // araç çubuğu ve halka
     var selKey = sel ? sel.id + ":" + (sel.stars || 0) + ":" + (sel.rot || 0) + ":" + Math.floor(cityState.coins || 0) : "";
     if (selKey !== S.selKey) {
@@ -426,9 +598,10 @@ var City3D = (function () {
       if (S.selRing) { S.scene.remove(S.selRing); if (S.selRing.geometry) S.selRing.geometry.dispose(); if (S.selRing.material) S.selRing.material.dispose(); S.selRing = null; }
       S.toolbar.innerHTML = "";
       if (sel) {
-        var span = cityItemSpan(sel), type = cityTypeOf(sel), road = cityIsRoad(sel);
-        var T = S.T, ring = new T.Mesh(new T.PlaneGeometry(span * 0.98, 0.98), new T.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.5, depthWrite: false }));
-        ring.rotation.x = -Math.PI / 2; ring.position.set(sel.gx + span / 2 - CITY_COLS / 2, 0.035, sel.gy + 0.5 - CITY_ROWS / 2); ring.renderOrder = 2;
+        var span = cityItemSpan(sel), type = cityTypeOf(sel), road = cityIsRoad(sel), decor = cityIsDecor(sel), sq = decor ? citySubOf(sel) : null;
+        var T = S.T, ring = new T.Mesh(new T.PlaneGeometry(sq ? 0.46 : span * 0.98, sq ? 0.46 : 0.98), new T.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.5, depthWrite: false }));
+        ring.rotation.x = -Math.PI / 2; ring.renderOrder = 2;
+        ring.position.set(sq ? (sq.sx + 0.5) / 2 - CITY_COLS / 2 : sel.gx + span / 2 - CITY_COLS / 2, 0.035, sq ? (sq.sy + 0.5) / 2 - CITY_ROWS / 2 : sel.gy + 0.5 - CITY_ROWS / 2);
         S.scene.add(ring); S.selRing = ring;
         if (!road) S.toolbar.appendChild(btn("↻ Döndür", "", rotateActiveOrSelected));
         S.toolbar.appendChild(btn("✋ Taşı", "", startMovingSelected));
@@ -446,7 +619,7 @@ var City3D = (function () {
       S.hint.innerHTML = "";
       if (active) {
         var isMove = !!movingId && !pendingBuilding;
-        S.hint.appendChild(el("span", "", (isMove ? "✋ Yeni yerini seç: " : "📍 Yerleştirmek için bir kareye tıkla: ") + active.emoji + " " + active.name));
+        S.hint.appendChild(el("span", "", (isMove ? "✋ Yeni yerini seç: " : (cityIsDecor(active) ? "📍 Küçük kareye tıkla (dekor yarım kare hassasiyetli): " : "📍 Yerleştirmek için bir kareye tıkla: ")) + active.emoji + " " + active.name));
         if (!cityIsRoad(active)) S.hint.appendChild(btn("↻ Döndür (R)", "", rotateActiveOrSelected));
         S.hint.appendChild(btn("Vazgeç", "", cancelPendingPlacement));
       }
@@ -487,7 +660,7 @@ var City3D = (function () {
     var p = S.ptr[e.pointerId];
     if (!p) {   // basılı değil: fare üzerinde gezinirken hayalet güncellenir
       if (e.pointerType === "mouse" && cityActiveItem()) {
-        var span = cityItemSpan(cityActiveItem()), c = cellAt(e.clientX, e.clientY, span);
+        var act = cityActiveItem(), span = cityItemSpan(act), c = cellAt(e.clientX, e.clientY, span, cityIsDecor(act));
         if (c) { S.lastCell = c; moveGhost(c); }
       }
       return;
@@ -516,11 +689,11 @@ var City3D = (function () {
   function onClick(x, y, ptype) {
     var active = cityActiveItem();
     if (active) {
-      var span = cityItemSpan(active), cell = cellAt(x, y, span);
+      var span = cityItemSpan(active), decor = cityIsDecor(active), cell = cellAt(x, y, span, decor);
       if (!cell) return;
-      var ok = cityCanPlace(cell.gx, cell.gy, span, cityOccupancy(cityState.buildings, active.id));
+      var ok = cityCanPlaceActive(active, cell);
       // dokunmatikte iki adım: ilk dokunuş hayaleti taşır, aynı kareye ikinci dokunuş yerleştirir
-      var same = S.ghostCell && S.ghostCell.gx === cell.gx && S.ghostCell.gy === cell.gy;
+      var same = S.ghostCell && (decor ? (S.ghostCell.sx === cell.sx && S.ghostCell.sy === cell.sy) : (S.ghostCell.gx === cell.gx && S.ghostCell.gy === cell.gy));
       S.lastCell = cell;
       if (ptype === "touch" && !same) { moveGhost(cell); return; }
       if (!ok) { moveGhost(cell); return; }
@@ -700,7 +873,7 @@ var City3D = (function () {
     isReady: function () { return S.mounted; },
     // test için
     _init: function (T, GLTFLoaderClass) { S.T = T; S.loader = new GLTFLoaderClass(); S.ray = new T.Raycaster(); S.plane = new T.Plane(new T.Vector3(0, 1, 0), 0); },
-    _state: S, _buildCity: buildCity, _roadPieceFor: roadPieceFor, _ROAD_BASE: ROAD_BASE, _TYPES: TYPES, _ROAD_FILE: ROAD_FILE, _todOf: todOf,
+    _state: S, _buildCity: buildCity, _planScenery: planScenery, _roadPieceFor: roadPieceFor, _ROAD_BASE: ROAD_BASE, _TYPES: TYPES, _ROAD_FILE: ROAD_FILE, _todOf: todOf,
     _variantIndex: variantIndex, _cellFromPoint: cellFromPoint, _makeHolder: makeHolder, _citySig: citySig, _applyCamera: applyCamera, _panBy: panBy,
     _onDown: onDown, _onMove: onMove, _onUp: onUp, _onWheel: onWheel, _onKey: onKey, _groundPoint: groundPoint, _mount: mount, _rebuild: rebuild, _VIEW: VIEW
   };

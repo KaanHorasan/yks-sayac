@@ -15,7 +15,7 @@ function loadCity() {
           if (typeof parsed.coins !== "number") parsed.coins = 0;
           if (typeof parsed.debuffSessionsLeft !== "number") parsed.debuffSessionsLeft = 0;
           cityApplyRows(parsed);   // kayıtlı genişleme kadar sıra; yerleşim düzeltmesinden ÖNCE
-          return normalizeCityLayout(cityMigrateLayout(cityMigrateRemoved(parsed)));
+          return cityMigrateDecor(normalizeCityLayout(cityMigrateLayout(cityMigrateRemoved(parsed))));
         }
       } catch (e) {}
     }
@@ -335,7 +335,7 @@ function cityBuyExpansion() {
   if (!cityLoadedOnce || !ex || cityActiveItem() || cityLevelIndex() < ex.level || (cityState.coins || 0) < ex.cost) return;
   cityState.coins = roundCoins(cityState.coins - ex.cost);
   cityState.expansions = n + 1;
-  cityState.buildings.forEach(function (b) { if (typeof b.gy === "number") b.gy += 2; });   // yeni sıralar arkaya eklenir, mevcut yapılar yerinde kalır
+  cityState.buildings.forEach(function (b) { if (typeof b.gy === "number") b.gy += 2; if (typeof b.sy === "number") b.sy += 4; });   // yeni sıralar arkaya eklenir, mevcut yapılar yerinde kalır
   selectedCityItemId = null;
   cityApplyRows(cityState);
   saveCity();
@@ -607,6 +607,8 @@ function cityMigrateLayout(state) {
   (state.buildings || []).forEach(function (b) {
     if (typeof b.gx === "number") b.gx += dx;
     if (typeof b.gy === "number") b.gy += dy;   // eski ön sıralar yeni alanın önünde kalır, yeni alan arkaya/yanlara eklenir
+    if (typeof b.sx === "number") b.sx += 2 * dx;
+    if (typeof b.sy === "number") b.sy += 2 * dy;
   });
   state.layoutV = CITY_LAYOUT_V;
   return state;
@@ -619,12 +621,15 @@ var CITY_LOOK = {
 function cityTypeOf(b) { return BUILDING_TYPES.filter(function (t) { return t.name === b.name; })[0] || null; }
 function cityItemSpan(b) { var l = CITY_LOOK[b.name]; return (l && l.span) || 1; }
 function cityIsRoad(b) { var t = cityTypeOf(b); return !!(t && t.road); }
+// Dekorlar (cat "dekor", yol değil) YARIM KARE ızgarasına oturur: sx/sy = 0,5 birimlik hücre (ana kare = 2x2 yarım kare).
+// gx/gy = floor(sx/2), floor(sy/2) olarak tutulur (genişleme/taşıma/eski sürümler için). Bina ve yollar ana karede kalır.
+function cityIsDecor(b) { var t = cityTypeOf(b); return !!(t && t.cat === "dekor" && !t.road); }
 function cityIsCounted(b) { var t = cityTypeOf(b); return !t || (t.cat || "bina") === "bina"; }
 function cityBuildingCount() { return cityState.buildings.filter(cityIsCounted).length; }
 function cityOccupancy(list, exceptId) {
   var occ = {};
   list.forEach(function (b) {
-    if (b.id === exceptId || typeof b.gx !== "number" || typeof b.gy !== "number") return;
+    if (b.id === exceptId || typeof b.gx !== "number" || typeof b.gy !== "number" || cityIsDecor(b)) return;   // dekorlar ayrı (yarım kare) ızgarada
     var sp = cityItemSpan(b);
     for (var i = 0; i < sp; i++) occ[(b.gx + i) + "," + b.gy] = b.id;
   });
@@ -634,6 +639,59 @@ function cityCanPlace(gx, gy, span, occ) {
   if (gx < 0 || gy < 0 || gy >= CITY_ROWS || gx + span > CITY_COLS) return false;
   for (var i = 0; i < span; i++) if (occ[(gx + i) + "," + gy]) return false;
   return true;
+}
+function citySubOf(b) {   // dekorun yarım kare konumu (yalnızca gx/gy'li eski kayıt: ana karenin sol-üst yarım karesi)
+  if (typeof b.sx === "number" && typeof b.sy === "number") return { sx: b.sx, sy: b.sy };
+  if (typeof b.gx === "number" && typeof b.gy === "number") return { sx: b.gx * 2, sy: b.gy * 2 };
+  return null;
+}
+function citySubOccupancy(list, exceptId) {   // "sx,sy" -> dekor kimliği
+  var occ = {};
+  list.forEach(function (b) {
+    if (b.id === exceptId || !cityIsDecor(b)) return;
+    var s = citySubOf(b);
+    if (s) occ[s.sx + "," + s.sy] = b.id;
+  });
+  return occ;
+}
+function cityDecorCells(list, exceptId) {   // içinde dekor olan ana kareler (bina/yol bu karelere konamaz)
+  var cells = {};
+  list.forEach(function (b) {
+    if (b.id === exceptId || !cityIsDecor(b)) return;
+    var s = citySubOf(b);
+    if (s) cells[Math.floor(s.sx / 2) + "," + Math.floor(s.sy / 2)] = true;
+  });
+  return cells;
+}
+// Elindeki yapı `cell`e (bina: gx/gy, dekor: sx/sy) konabilir mi?
+function cityCanPlaceActive(active, cell) {
+  if (!active || !cell) return false;
+  var list = cityState.buildings;
+  if (cityIsDecor(active)) {
+    var sx = cell.sx, sy = cell.sy;
+    if (typeof sx !== "number" || typeof sy !== "number") return false;
+    var gx = Math.floor(sx / 2), gy = Math.floor(sy / 2);
+    if (sx < 0 || sy < 0 || gx >= CITY_COLS || gy >= CITY_ROWS) return false;
+    var occId = cityOccupancy(list, active.id)[gx + "," + gy];
+    if (occId) {   // bina/yol karesi: yalnızca onRoad dekorlar (araç, koni, bariyer) yola konabilir
+      var ob = list.filter(function (x) { return x.id === occId; })[0], type = cityTypeOf(active);
+      if (!(ob && cityIsRoad(ob) && type && type.onRoad)) return false;
+    }
+    return !citySubOccupancy(list, active.id)[sx + "," + sy];
+  }
+  var span = cityItemSpan(active);
+  if (!cityCanPlace(cell.gx, cell.gy, span, cityOccupancy(list, active.id))) return false;
+  var dc = cityDecorCells(list, active.id);
+  for (var i = 0; i < span; i++) if (dc[(cell.gx + i) + "," + cell.gy]) return false;
+  return true;
+}
+// Kayıttaki dekorların sx/sy'sini gx/gy ile tutarlı yap (v3.16.0 ve eski kayıtlar ya da eski sürümde taşınmış dekorlar).
+function cityMigrateDecor(state) {
+  (state.buildings || []).forEach(function (b) {
+    if (typeof b.gx !== "number" || typeof b.gy !== "number" || !cityIsDecor(b)) return;
+    if (typeof b.sx !== "number" || typeof b.sy !== "number" || Math.floor(b.sx / 2) !== b.gx || Math.floor(b.sy / 2) !== b.gy) { b.sx = b.gx * 2; b.sy = b.gy * 2; }
+  });
+  return state;
 }
 function cityFindFree(occ, gx, gy, span) {
   var rows = [];
@@ -867,9 +925,15 @@ function renderCityViewStats() {
 }
 function placeActiveItem(active, cell) {
   var span = cityItemSpan(active);
-  active.gx = cell.gx;
-  active.gy = cell.gy;
-  active.xPercent = ((cell.gx + span / 2) / CITY_COLS) * 100;
+  if (cityIsDecor(active) && typeof cell.sx === "number" && typeof cell.sy === "number") {
+    active.sx = cell.sx; active.sy = cell.sy;
+    active.gx = Math.floor(cell.sx / 2); active.gy = Math.floor(cell.sy / 2);
+  } else {
+    delete active.sx; delete active.sy;
+    active.gx = cell.gx;
+    active.gy = cell.gy;
+  }
+  active.xPercent = ((active.gx + span / 2) / CITY_COLS) * 100;
   if (pendingBuilding) {
     if (active.name === "Tabela") active.label = askSignLabel(active.label);
     cityState.buildings.push(active);
