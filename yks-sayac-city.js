@@ -15,7 +15,7 @@ function loadCity() {
           if (typeof parsed.coins !== "number") parsed.coins = 0;
           if (typeof parsed.debuffSessionsLeft !== "number") parsed.debuffSessionsLeft = 0;
           cityApplyRows(parsed);   // kayıtlı genişleme kadar sıra; yerleşim düzeltmesinden ÖNCE
-          return cityMigrateDecor(normalizeCityLayout(cityMigrateLayout(cityMigrateRemoved(parsed))));
+          return cityMigrateEntrance(cityMigrateDecor(normalizeCityLayout(cityMigrateLayout(cityMigrateRemoved(parsed)))));
         }
       } catch (e) {}
     }
@@ -601,6 +601,14 @@ function accrueStudyGold() {
 var CITY_COLS = 24, CITY_ROWS = 12;
 // Yerleşim sürümü: 2 = 24 sütun x 12 temel sıra. Eski kayıtlar (sürümsüz = 14x5) bir kez ortalanıp öne hizalanır.
 var CITY_LAYOUT_V = 2, CITY_OLD_COLS = 14, CITY_OLD_ROWS_BASE = 5;
+// ---- Yapılabilir bölge (v3.18.0) ----
+// Dünya: 24 sütun x (12 + 2·genişleme) sıra. Yalnızca iç bölgeye yapı/dekor konabilir; çevresi vahşi doğa (çalı/kaya).
+// Bölge: sütun 5..18 (14 geniş), arkadan 4 sıra vahşi (gy >= 4), ön sıra dahil. "Yeni mahalle" arkaya sıra ekledikçe bölge derinleşir.
+// Şehir girişi: bölgenin ön sırasında sabit bir yol karesi (CITY_ENTRANCE_GX, CITY_ROWS-1); araç/yayalar buradan girip çıkar.
+var CITY_ZONE_X0 = 5, CITY_ZONE_X1 = 18, CITY_ZONE_BACK = 4, CITY_ENTRANCE_GX = 11;
+function cityCellInZone(gx, gy) { return gx >= CITY_ZONE_X0 && gx <= CITY_ZONE_X1 && gy >= CITY_ZONE_BACK && gy <= CITY_ROWS - 1; }
+function cityZone() { return { x0: CITY_ZONE_X0, x1: CITY_ZONE_X1, y0: CITY_ZONE_BACK, y1: CITY_ROWS - 1 }; }
+function cityEntrance() { return { gx: CITY_ENTRANCE_GX, gy: CITY_ROWS - 1 }; }
 function cityMigrateLayout(state) {
   if (!state || (state.layoutV || 1) >= CITY_LAYOUT_V) return state;
   var dx = Math.floor((CITY_COLS - CITY_OLD_COLS) / 2), dy = CITY_ROWS_BASE - CITY_OLD_ROWS_BASE;
@@ -627,7 +635,8 @@ function cityIsDecor(b) { var t = cityTypeOf(b); return !!(t && t.cat === "dekor
 function cityIsCounted(b) { var t = cityTypeOf(b); return !t || (t.cat || "bina") === "bina"; }
 function cityBuildingCount() { return cityState.buildings.filter(cityIsCounted).length; }
 function cityOccupancy(list, exceptId) {
-  var occ = {};
+  var occ = {}, ent = cityEntrance();
+  occ[ent.gx + "," + ent.gy] = "__entrance";   // sabit giriş yolu (kayıtta tutulmaz)
   list.forEach(function (b) {
     if (b.id === exceptId || typeof b.gx !== "number" || typeof b.gy !== "number" || cityIsDecor(b)) return;   // dekorlar ayrı (yarım kare) ızgarada
     var sp = cityItemSpan(b);
@@ -637,7 +646,7 @@ function cityOccupancy(list, exceptId) {
 }
 function cityCanPlace(gx, gy, span, occ) {
   if (gx < 0 || gy < 0 || gy >= CITY_ROWS || gx + span > CITY_COLS) return false;
-  for (var i = 0; i < span; i++) if (occ[(gx + i) + "," + gy]) return false;
+  for (var i = 0; i < span; i++) if (!cityCellInZone(gx + i, gy) || occ[(gx + i) + "," + gy]) return false;
   return true;
 }
 function citySubOf(b) {   // dekorun yarım kare konumu (yalnızca gx/gy'li eski kayıt: ana karenin sol-üst yarım karesi)
@@ -671,7 +680,7 @@ function cityCanPlaceActive(active, cell) {
     var sx = cell.sx, sy = cell.sy;
     if (typeof sx !== "number" || typeof sy !== "number") return false;
     var gx = Math.floor(sx / 2), gy = Math.floor(sy / 2);
-    if (sx < 0 || sy < 0 || gx >= CITY_COLS || gy >= CITY_ROWS) return false;
+    if (sx < 0 || sy < 0 || gx >= CITY_COLS || gy >= CITY_ROWS || !cityCellInZone(gx, gy)) return false;
     var occId = cityOccupancy(list, active.id)[gx + "," + gy];
     if (occId) {   // bina/yol karesi: yalnızca onRoad dekorlar (araç, koni, bariyer) yola konabilir
       var ob = list.filter(function (x) { return x.id === occId; })[0], type = cityTypeOf(active);
@@ -684,6 +693,26 @@ function cityCanPlaceActive(active, cell) {
   var dc = cityDecorCells(list, active.id);
   for (var i = 0; i < span; i++) if (dc[(cell.gx + i) + "," + cell.gy]) return false;
   return true;
+}
+// Giriş karesindeki yol/dekor silinir (giriş yolu yerini alır, maliyet iade); başka yapı en yakın boş bölge karesine taşınır.
+function cityMigrateEntrance(state) {
+  var ent = cityEntrance(), keep = [], refund = 0, moved = [];
+  (state.buildings || []).forEach(function (b) {
+    if (typeof b.gx !== "number" || typeof b.gy !== "number") { keep.push(b); return; }
+    var inCell;
+    if (cityIsDecor(b)) { var q = citySubOf(b); inCell = q && Math.floor(q.sx / 2) === ent.gx && Math.floor(q.sy / 2) === ent.gy; }
+    else { var sp = cityItemSpan(b); inCell = b.gy === ent.gy && ent.gx >= b.gx && ent.gx < b.gx + sp; }
+    if (!inCell) { keep.push(b); return; }
+    if (cityIsRoad(b) || cityIsDecor(b)) { var t = cityTypeOf(b); refund += (t && t.cost) || 0; return; }
+    moved.push(b); keep.push(b);
+  });
+  state.buildings = keep;
+  if (refund) state.coins = (state.coins || 0) + refund;
+  moved.forEach(function (b) {
+    var sp = cityItemSpan(b), occ = cityOccupancy(state.buildings, b.id), spot = cityFindFree(occ, b.gx, b.gy, sp);
+    if (spot) { b.gx = spot.gx; b.gy = spot.gy; b.xPercent = ((b.gx + sp / 2) / CITY_COLS) * 100; }
+  });
+  return state;
 }
 // Kayıttaki dekorların sx/sy'sini gx/gy ile tutarlı yap (v3.16.0 ve eski kayıtlar ya da eski sürümde taşınmış dekorlar).
 function cityMigrateDecor(state) {
