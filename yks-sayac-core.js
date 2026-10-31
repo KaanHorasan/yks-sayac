@@ -7,7 +7,7 @@
 // Her yeni surum yayinladiginda bu numarayi guncelle (orn. "1.1.0").
 // Firestore'daki appConfig/latestVersion belgesindeki "version" alani
 // bundan BUYUK olursa, kullaniciya yeni surum oldugu bildirilir.
-var APP_VERSION = "3.19.0";
+var APP_VERSION = "3.20.0";
 (function () {
   var tag = document.getElementById("cornerVersionTag");
   if (tag) tag.textContent = "v" + APP_VERSION;

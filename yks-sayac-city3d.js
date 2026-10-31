@@ -351,7 +351,8 @@ var City3D = (function () {
     tree: [["nat/tree_default", 0.7], ["nat/tree_oak", 0.75], ["nat/tree_pineTallA", 0.65], ["nat/tree_pineDefaultA", 0.7], ["nat/tree_fat", 0.8], ["nat/tree_default_fall", 0.7]],
     bush: [["nat/plant_bushLarge", 2.4], ["nat/plant_bushDetailed", 2.2], ["nat/plant_bushLargeTriangle", 2.6]],
     rock: [["nat/rock_largeA", 0.8], ["nat/rock_largeD", 0.7], ["nat/stone_largeC", 0.8], ["nat/rock_tallB", 0.7]],
-    flat: [["nat/plant_flatTall", 1.6], ["nat/grass_large", 1.4]]
+    flat: [["nat/plant_flatTall", 1.6], ["nat/grass_large", 1.4]],
+    flower: [["nat/flower_redA", 1.6], ["nat/flower_yellowA", 1.6], ["nat/flower_purpleA", 1.6], ["nat/flower_yellowB", 1.6]]
   };
   var SC_TREE_IN = 0.05;
   var SC_OTHER_IN = [["bush", 0.06], ["rock", 0.04], ["flower", 0.16], ["grass", 0.12], ["misc", 0.03]];
@@ -361,11 +362,18 @@ var City3D = (function () {
     h = Math.imul(h ^ (h >>> 15), 2246822519) >>> 0; h = Math.imul(h ^ (h >>> 13), 3266489917) >>> 0; h = (h ^ (h >>> 16)) >>> 0;
     return h / 4294967296;
   }
+  // Düşük frekanslı yumuşak gürültü (0..1): bitki kümeleri ve çayırlar için. scale = küme boyutu (kare cinsinden).
+  function smoothNoise(seed, a, b, salt, scale) {
+    var x = a / scale, y = b / scale, x0 = Math.floor(x), y0 = Math.floor(y), fx = smoothstep01(x - x0), fy = smoothstep01(y - y0);
+    var v00 = rnd(seed, x0 + 900, y0 + 900, salt), v10 = rnd(seed, x0 + 901, y0 + 900, salt), v01 = rnd(seed, x0 + 900, y0 + 901, salt), v11 = rnd(seed, x0 + 901, y0 + 901, salt);
+    return (v00 * (1 - fx) + v10 * fx) * (1 - fy) + (v01 * (1 - fx) + v11 * fx) * fy;
+  }
+  function smoothstep01(t) { return t * t * (3 - 2 * t); }
   // Saf: hangi yere hangi süs konur. Dönen: [{ m, x, z, rot, s, far }] (x,z dünya koordinatı). Satır anahtarı ön sıradan sayılır:
   // "yeni mahalle" arkaya satır ekleyince süsler yerinde kalır.
   function planScenery(city, seed) {
     var cols = city.cols, rows = city.rows, main = {}, sub = {}, out = [];
-    var zone = city.zone || { x0: 0, x1: cols - 1, y0: 0, y1: rows - 1 }, ent = city.entrance || null;
+    var zone = city.zone || { x0: 0, x1: cols - 1, y0: 0, y1: rows - 1 }, ent = city.entrance || null, lake = city.land && city.land.lake;
     city.buildings.forEach(function (b) {
       var type = city.typeOf(b); if (!type) return;
       if (city.isDecor && city.isDecor(b)) { var q = city.subOf(b); if (q) sub[q.sx + "," + q.sy] = true; return; }
@@ -374,7 +382,7 @@ var City3D = (function () {
     });
     if (ent) main[ent.gx + "," + ent.gy] = true;
     function pick(list, r) { return list[Math.floor(r * list.length) % list.length]; }
-    function add(pk, x, z, r1, r2, far) { out.push({ m: pk[0], x: x - cols / 2, z: z - rows / 2, rot: r1 * Math.PI * 2, s: pk[1] * (0.85 + r2 * 0.3), far: !!far }); }
+    function add(pk, x, z, r1, r2, far, wide) { out.push({ m: pk[0], x: x - cols / 2, z: z - rows / 2, rot: r1 * Math.PI * 2, s: pk[1] * (wide ? 0.7 + r2 * 0.6 : 0.85 + r2 * 0.3), far: !!far }); }
     var gx, gy, i, j;
     for (gy = 0; gy < rows; gy++) for (gx = 0; gx < cols; gx++) {
       if (main[gx + "," + gy]) continue;
@@ -397,38 +405,44 @@ var City3D = (function () {
           add(pick(SC[kind], rnd(seed, gx, fy, 20 + i)), (sx + 0.5) / 2 + (rnd(seed, gx, fy, 30 + i) - 0.5) * 0.14, (sy + 0.5) / 2 + (rnd(seed, gx, fy, 40 + i) - 0.5) * 0.14,
               rnd(seed, gx, fy, 50 + i), rnd(seed, gx, fy, 60 + i), false);
         }
-      } else {   // vahşi bölge: sık çalılık ve kayalık (kenarda birkaç ağaç)
-        var edge = Math.min(gx, cols - 1 - gx, gy, rows - 1 - gy), cnt = 2 + Math.floor(rnd(seed, gx, fy, 71) * 3);
+      } else {   // vahşi bölge: kümeler halinde çalılık/kayalık; kümelerin arası çayır ve çiçek
+        var f = smoothNoise(seed, gx, fy, 501, 4.5), r71 = rnd(seed, gx, fy, 71);
+        var cnt = f < 0.28 ? (r71 < 0.35 ? 1 : 0) : (f < 0.5 ? 1 + Math.floor(r71 * 2) : 2 + Math.floor(r71 * 3));
         for (j = 0; j < cnt; j++) {
-          var r = rnd(seed, gx, fy, 80 + j), lst;
-          if (r < 0.40) lst = SCW.bushBig; else if (r < 0.66) lst = SCW.rockBig; else if (r < 0.78) lst = SCW.rockSmall;
-          else if (r < 0.90) lst = SCW.flat; else lst = edge <= 1 ? SC.tree : SCW.bushBig;
+          var r = rnd(seed, gx, fy, 80 + j), lst, wide = false;
+          if (r < 0.32) { lst = SCW.bushBig; wide = true; } else if (r < 0.48) lst = SCW.rockBig; else if (r < 0.58) lst = SCW.rockSmall;
+          else if (r < 0.74) lst = SCW.flat; else if (r < 0.86) lst = SC.flower; else lst = SC.tree;
           add(pick(lst, rnd(seed, gx, fy, 90 + j)), gx + 0.12 + rnd(seed, gx, fy, 100 + j) * 0.76, gy + 0.12 + rnd(seed, gx, fy, 110 + j) * 0.76,
-              rnd(seed, gx, fy, 120 + j), rnd(seed, gx, fy, 130 + j), false);
+              rnd(seed, gx, fy, 120 + j), rnd(seed, gx, fy, 130 + j), false, wide);
         }
       }
     }
-    for (gy = -SC_RING; gy < rows + SC_RING; gy++) for (gx = -SC_RING; gx < cols + SC_RING; gx++) {   // dünyanın dışı
+    for (gy = -SC_RING; gy < rows + SC_RING; gy++) for (gx = -SC_RING; gx < cols + SC_RING; gx++) {   // dünyanın dışı: kümeli, kademeli seyrelen
       if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) continue;
       if (ent && gy >= rows && Math.abs(gx - ent.gx) <= 1) continue;   // dışarı uzanan giriş yolu ve kaldırımı açık kalsın
       var dist = Math.max(-gx, gx - (cols - 1), -gy, gy - (rows - 1)), fy2 = rows - 1 - gy;
-      if (rnd(seed, gx + 500, fy2 + 500, 201) >= 0.8 - 0.09 * (dist - 1)) continue;
-      if (inLake(city.land && city.land.lake, gx + 0.5 - cols / 2, gy + 0.5 - rows / 2, 0.5)) continue;   // göl kıyısında süs olmaz
-      var m2 = 1 + (rnd(seed, gx + 500, fy2 + 500, 202) < 0.4 ? 1 : 0);
+      if (lake && inLake(lake, gx + 0.5 - cols / 2, gy + 0.5 - rows / 2, 0.5)) continue;   // göl kıyısında süs olmaz
+      var f2 = smoothNoise(seed, gx, fy2, 502, 4), p = (0.8 - 0.09 * (dist - 1)) * (f2 < 0.3 ? 0.35 : (f2 < 0.6 ? 1 : 1.35));
+      if (rnd(seed, gx + 500, fy2 + 500, 201) >= p) continue;
+      var m2 = 1 + (rnd(seed, gx + 500, fy2 + 500, 202) < 0.45 ? 1 : 0);
       for (j = 0; j < m2; j++) {
-        var r2 = rnd(seed, gx + 500, fy2 + 500, 203 + j), l2 = r2 < 0.5 ? SCF.tree : (r2 < 0.75 ? SCF.bush : (r2 < 0.9 ? SCF.rock : SCF.flat));
+        var r2 = rnd(seed, gx + 500, fy2 + 500, 203 + j), l2, w2 = false;
+        if (r2 < 0.38) l2 = SCF.tree; else if (r2 < 0.64) { l2 = SCF.bush; w2 = true; } else if (r2 < 0.74) l2 = SCF.rock; else if (r2 < 0.88) l2 = SCF.flat; else l2 = SCF.flower;
         add(pick(l2, rnd(seed, gx + 500, fy2 + 500, 210 + j)), gx + 0.1 + rnd(seed, gx + 500, fy2 + 500, 220 + j) * 0.8, gy + 0.1 + rnd(seed, gx + 500, fy2 + 500, 230 + j) * 0.8,
-            rnd(seed, gx + 500, fy2 + 500, 240 + j), rnd(seed, gx + 500, fy2 + 500, 250 + j), true);
+            rnd(seed, gx + 500, fy2 + 500, 240 + j), rnd(seed, gx + 500, fy2 + 500, 250 + j), true, w2);
       }
     }
     return out;
   }
+  // Kit renkleri pastel turkuaz/pembemsi; şehrin yeşil zeminine uyum için yeşile ve toprak tonuna çekilir (yalnızca süslerde).
+  var SCENERY_TINT = { grass: 0x78d47f, leafsGreen: 0x62c06e, leafsDark: 0x4ca564, dirt: 0xc7b49d, woodBark: 0xb98a63, woodBarkDark: 0x9d7352 };
+  var SCENERY_CAST = /tree_|rock_large|rock_tall|stone_large|stone_tall/;   // yalnızca iri şekiller gölge düşürür (yığılan küçük gölgeler çalılığı simsiyah yapıyordu)
   // Süsleri model başına InstancedMesh olarak ekler (yüzlerce süs birkaç çizim çağrısı). Uzak halka gölge düşürmez.
   function addScenery(T, loadModel, group, items, dispose, report) {
-    var byModel = {};
+    var byModel = {}, tints = {};
     items.forEach(function (it) { var k = (it.far ? "f|" : "n|") + it.m; (byModel[k] = byModel[k] || []).push(it); });
     return Promise.all(Object.keys(byModel).map(function (k) {
-      var list = byModel[k], m = list[0].m, far = !!list[0].far;
+      var list = byModel[k], m = list[0].m, far = !!list[0].far, cast = !far && SCENERY_CAST.test(m);
       return loadModel(m).then(function (obj) {
         obj.updateMatrixWorld(true);
         var box = new T.Box3().setFromObject(obj);
@@ -438,9 +452,10 @@ var City3D = (function () {
         var inv = new T.Matrix4().copy(obj.matrixWorld).invert(), up = new T.Vector3(0, 1, 0);
         obj.traverse(function (mesh) {
           if (!mesh.isMesh || !mesh.geometry || !mesh.material) return;
-          var rel = mesh.matrixWorld.clone().premultiply(inv);
-          var im = new T.InstancedMesh(mesh.geometry, mesh.material, list.length);
-          im.castShadow = !far; im.receiveShadow = true; im.frustumCulled = false; im.userData.scenery = true; im.userData.model = m;
+          var rel = mesh.matrixWorld.clone().premultiply(inv), mat = mesh.material, tint = SCENERY_TINT[mat.name];
+          if (tint !== undefined) { mat = tints[mat.name] || (tints[mat.name] = (function () { var c = mat.clone(); c.color.set(tint); dispose.push(c); return c; })()); }
+          var im = new T.InstancedMesh(mesh.geometry, mat, list.length);
+          im.castShadow = cast; im.receiveShadow = true; im.frustumCulled = false; im.userData.scenery = true; im.userData.model = m;
           list.forEach(function (it, i) {
             var M = new T.Matrix4().compose(new T.Vector3(it.x, 0, it.z), new T.Quaternion().setFromAxisAngle(up, it.rot), new T.Vector3(it.s, it.s, it.s));
             M.multiply(offset).multiply(rel);
@@ -507,7 +522,6 @@ var City3D = (function () {
   }
 
   // ---- Zemin dokusu ve uzak orman (v3.18.1): şehir adaya değil, sonsuz bir araziye otursun ----
-  function smoothstep01(t) { return t * t * (3 - 2 * t); }
   // 128x128 döşenebilir (tileable) yumuşak gürültü: koyu/açık yeşil lekeler, seyrek sarımsı tonlar. Düz tek renk zemin derinlik vermez.
   function groundTexture(T, seed) {
     var N = 128, data = new Uint8Array(N * N * 4), i;
@@ -531,39 +545,66 @@ var City3D = (function () {
     return tex;
   }
   var DIST_FROM = 8, DIST_TO = 34;   // gerçek modelli halkanın (SC_RING) ardından, ucuz şekillerden uzak orman
-  var DIST_LEAF = [0x70e6d6, 0x63d9c0, 0x55c7ae, 0x7fe9c9, 0x5fd0e0, 0xf2994a];   // Nature Kit yaprak paleti; sonuncusu sonbahar
+  var MEADOW_TO = 28;                // ince ot ve çiçek katmanı: dünya kenarından bu kareye kadar
+  // Yaprak paleti: şehrin yeşil zeminiyle uyumlu yeşiller, az turkuaz vurgu, seyrek sarı/sonbahar
+  var DIST_GREEN = [0x5fae6a, 0x6dbd75, 0x4f9a5f, 0x7cc47f, 0x58b59a];
+  var DIST_YELLOW = 0xd9b94a, DIST_FALL = 0xf2994a;
   // Saf: uzak ağaç/çalı/kaya yerleşimi. Düşük frekanslı gürültüyle orman kümeleri ve çayırlar oluşur; dünya kenarından uzaklaştıkça seyrelir.
   function planDistant(city, seed) {
-    var cols = city.cols, rows = city.rows, ent = city.entrance || null, out = { trees: [], bushes: [], rocks: [] };
-    function nz(a, b, salt) {
-      var x = a / 7, y = b / 7, x0 = Math.floor(x), y0 = Math.floor(y), fx = smoothstep01(x - x0), fy = smoothstep01(y - y0);
-      var v00 = rnd(seed, x0 + 900, y0 + 900, salt), v10 = rnd(seed, x0 + 901, y0 + 900, salt), v01 = rnd(seed, x0 + 900, y0 + 901, salt), v11 = rnd(seed, x0 + 901, y0 + 901, salt);
-      return (v00 * (1 - fx) + v10 * fx) * (1 - fy) + (v01 * (1 - fx) + v11 * fx) * fy;
-    }
+    var cols = city.cols, rows = city.rows, ent = city.entrance || null, land = city.land, out = { trees: [], bushes: [], rocks: [] };
     for (var gy = -DIST_TO; gy < rows + DIST_TO; gy++) for (var gx = -DIST_TO; gx < cols + DIST_TO; gx++) {
       var dist = Math.max(-gx, gx - (cols - 1), -gy, gy - (rows - 1));
       if (dist < DIST_FROM || dist > DIST_TO) continue;
       if (ent && gy >= rows && Math.abs(gx - ent.gx) <= 1) continue;   // dışarı uzanan yolun koridoru açık kalsın
-      var fy = rows - 1 - gy, f = nz(gx, fy, 311);
-      var base = 0.6 - 0.45 * (dist - DIST_FROM) / (DIST_TO - DIST_FROM);
-      var p = base * (f < 0.38 ? 0.12 : (f < 0.62 ? 0.8 : 1.5));
+      var fy = rows - 1 - gy, f = smoothNoise(seed, gx, fy, 311, 7);
+      var base = 0.7 - 0.5 * (dist - DIST_FROM) / (DIST_TO - DIST_FROM);
+      var p = base * (f < 0.34 ? 0.15 : (f < 0.6 ? 0.85 : 1.6));
       if (rnd(seed, gx + 700, fy + 700, 312) >= p) continue;
-      var cnt = 1 + (rnd(seed, gx + 700, fy + 700, 313) < 0.5 ? 1 : 0);
+      var cnt = 1 + (rnd(seed, gx + 700, fy + 700, 313) < 0.55 ? 1 : 0);
       for (var j = 0; j < cnt; j++) {
         var r = rnd(seed, gx + 700, fy + 700, 320 + j), x = gx + 0.1 + rnd(seed, gx + 700, fy + 700, 330 + j) * 0.8 - cols / 2, z = gy + 0.1 + rnd(seed, gx + 700, fy + 700, 340 + j) * 0.8 - rows / 2;
-        if (inLake(city.land && city.land.lake, x, z, 0.8)) continue;   // göl ve kıyısında ağaç olmaz
-        var rot = rnd(seed, gx + 700, fy + 700, 350 + j) * Math.PI * 2, sc = 0.8 + rnd(seed, gx + 700, fy + 700, 360 + j) * 0.7;
-        if (r < 0.72) {
-          var cr = rnd(seed, gx + 700, fy + 700, 370 + j);
-          out.trees.push({ x: x, z: z, y: terrainY(city.land, x, z), rot: rot, s: sc, c: cr < 0.12 ? DIST_LEAF[5] : DIST_LEAF[Math.floor(cr / 0.12 * 0.999) % 5] });
-        } else if (r < 0.92) out.bushes.push({ x: x, z: z, y: terrainY(city.land, x, z), rot: rot, s: sc * 1.1, c: DIST_LEAF[Math.floor(rnd(seed, gx + 700, fy + 700, 380 + j) * 5) % 5] });
-        else out.rocks.push({ x: x, z: z, y: terrainY(city.land, x, z), rot: rot, s: sc * 0.9, c: 0xb9c4cc });
+        if (inLake(land && land.lake, x, z, 0.8)) continue;   // göl ve kıyısında ağaç olmaz
+        var rot = rnd(seed, gx + 700, fy + 700, 350 + j) * Math.PI * 2, sc = 0.75 + rnd(seed, gx + 700, fy + 700, 360 + j) * 0.8, y = terrainY(land, x, z);
+        if (r < 0.74) {
+          var cr = rnd(seed, gx + 700, fy + 700, 370 + j), sr = rnd(seed, gx + 700, fy + 700, 371 + j);
+          var color = cr < 0.05 ? DIST_FALL : (cr < 0.12 ? DIST_YELLOW : DIST_GREEN[Math.floor(rnd(seed, gx + 700, fy + 700, 372 + j) * DIST_GREEN.length) % DIST_GREEN.length]);
+          out.trees.push({ x: x, z: z, y: y, rot: rot, s: sc, c: color, shape: sr < 0.4 ? "cone" : (sr < 0.7 ? "round" : "tall") });
+        } else if (r < 0.93) out.bushes.push({ x: x, z: z, y: y, rot: rot, s: sc * 1.1, c: DIST_GREEN[Math.floor(rnd(seed, gx + 700, fy + 700, 380 + j) * DIST_GREEN.length) % DIST_GREEN.length] });
+        else out.rocks.push({ x: x, z: z, y: y, rot: rot, s: sc * 0.9, c: 0xb9c4cc });
       }
     }
     return out;
   }
-  // Uzak ormanı 4-5 InstancedMesh ile çizer (yaprak/gövde/çalı/kaya): binlerce şekil birkaç çizim çağrısı, gölgesiz.
-  function addDistant(T, group, plan, dispose, report) {
+  // Saf: boş çimeni dolduran ince ot sivrileri ve çiçek benekleri (kümeli); dünya kenarından MEADOW_TO kareye kadar, gerçek halkanın altında da sürer.
+  var MEADOW_FLOWERS = [0xffffff, 0xffd990, 0xf19398, 0xcfc2ff];
+  function planMeadow(city, seed) {
+    var cols = city.cols, rows = city.rows, ent = city.entrance || null, land = city.land, out = { tufts: [], specks: [] };
+    for (var gy = -MEADOW_TO; gy < rows + MEADOW_TO; gy++) for (var gx = -MEADOW_TO; gx < cols + MEADOW_TO; gx++) {
+      if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) continue;
+      if (ent && gy >= rows && gy <= rows + LIFE.ext + 1 && Math.abs(gx - ent.gx) <= 1) continue;   // yol ve kaldırım üstünde ot olmaz
+      var dist = Math.max(-gx, gx - (cols - 1), -gy, gy - (rows - 1)), fy = rows - 1 - gy;
+      var g = smoothNoise(seed, gx, fy, 601, 3.2), n = Math.floor(g * g * 4.2 * (1 - dist / (MEADOW_TO + 8)));   // yakında sık, uzakta seyrek
+      var x0 = gx - cols / 2, z0 = gy - rows / 2, i;
+      for (i = 0; i < n; i++) {
+        var x = x0 + 0.05 + rnd(seed, gx + 800, fy + 800, 610 + i) * 0.9, z = z0 + 0.05 + rnd(seed, gx + 800, fy + 800, 620 + i) * 0.9;
+        if (inLake(land && land.lake, x, z, 0.6)) continue;
+        out.tufts.push({ x: x, z: z, y: terrainY(land, x, z), rot: rnd(seed, gx + 800, fy + 800, 630 + i) * 6.28, s: 0.7 + rnd(seed, gx + 800, fy + 800, 640 + i) * 0.8,
+                         c: DIST_GREEN[Math.floor(rnd(seed, gx + 800, fy + 800, 650 + i) * 3) % 3] });
+      }
+      var ff = smoothNoise(seed, gx, fy, 602, 3.5);
+      if (ff > 0.7 && dist <= MEADOW_TO - 6) {   // çiçek tarlası: bölge başına tek renk baskın
+        var pc = smoothNoise(seed, gx, fy, 603, 9), col = MEADOW_FLOWERS[Math.min(3, Math.floor(pc * 4))], m = 2 + Math.floor(rnd(seed, gx + 800, fy + 800, 660) * 3);
+        for (i = 0; i < m; i++) {
+          var sx = x0 + 0.08 + rnd(seed, gx + 800, fy + 800, 670 + i) * 0.84, sz = z0 + 0.08 + rnd(seed, gx + 800, fy + 800, 680 + i) * 0.84;
+          if (inLake(land && land.lake, sx, sz, 0.6)) continue;
+          out.specks.push({ x: sx, z: sz, y: terrainY(land, sx, sz) + 0.07, rot: 0, s: 0.8 + rnd(seed, gx + 800, fy + 800, 690 + i) * 0.7, c: rnd(seed, gx + 800, fy + 800, 695 + i) < 0.2 ? 0xffffff : col });
+        }
+      }
+    }
+    return out;
+  }
+  // Uzak orman + ince ot + çiçek: birkaç InstancedMesh (yaprak türleri/gövde/çalı/kaya/ot/çiçek), gölgesiz.
+  function addDistant(T, group, plan, dispose, report, meadow) {
     var up = new T.Vector3(0, 1, 0), col = new T.Color();
     function make(geo, mat, list, sy) {
       if (!list.length) return;
@@ -578,17 +619,25 @@ var City3D = (function () {
       group.add(im); dispose.push(im);
     }
     var leafMat = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, flatShading: true });
-    var trunkMat = new T.MeshStandardMaterial({ color: 0xc58a5a, roughness: 1, metalness: 0, flatShading: true });
+    var trunkMat = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, flatShading: true });
     var coneGeo = new T.ConeGeometry(0.3, 0.95, 6); coneGeo.translate(0, 0.12 + 0.475, 0);
-    var trunkGeo = new T.CylinderGeometry(0.05, 0.06, 0.25, 5); trunkGeo.translate(0, 0.125, 0);
+    var tallGeo = new T.ConeGeometry(0.19, 1.35, 6); tallGeo.translate(0, 0.12 + 0.675, 0);
+    var roundGeo = new T.IcosahedronGeometry(0.34, 0); roundGeo.scale(1, 0.9, 1); roundGeo.translate(0, 0.52, 0);
+    var trunkGeo = new T.CylinderGeometry(0.05, 0.06, 0.28, 5); trunkGeo.translate(0, 0.14, 0);
     var bushGeo = new T.IcosahedronGeometry(0.3, 0); bushGeo.translate(0, 0.1, 0);
     var rockGeo = new T.DodecahedronGeometry(0.22, 0); rockGeo.translate(0, 0.08, 0);
-    dispose.push(leafMat, trunkMat, coneGeo, trunkGeo, bushGeo, rockGeo);
-    var trunks = plan.trees.map(function (t) { return { x: t.x, y: t.y, z: t.z, rot: t.rot, s: t.s, c: 0xc58a5a }; });
-    make(coneGeo, leafMat, plan.trees); make(trunkGeo, trunkMat, trunks);
+    var bladeGeo = new T.ConeGeometry(0.07, 0.24, 4); bladeGeo.translate(0, 0.12, 0);
+    var speckGeo = new T.IcosahedronGeometry(0.045, 0);
+    dispose.push(leafMat, trunkMat, coneGeo, tallGeo, roundGeo, trunkGeo, bushGeo, rockGeo, bladeGeo, speckGeo);
+    function byShape(s) { return plan.trees.filter(function (t) { return t.shape === s; }); }
+    var trunks = plan.trees.map(function (t) { return { x: t.x, y: t.y, z: t.z, rot: t.rot, s: t.s, c: t.shape === "round" ? 0xa9795a : 0xb98a63 }; });
+    make(coneGeo, leafMat, byShape("cone")); make(tallGeo, leafMat, byShape("tall")); make(roundGeo, leafMat, byShape("round")); make(trunkGeo, trunkMat, trunks);
     make(bushGeo, leafMat, plan.bushes, 0.65); make(rockGeo, leafMat, plan.rocks, 0.7);
-    report.distant = plan.trees.length + plan.bushes.length + plan.rocks.length;
+    var n = plan.trees.length + plan.bushes.length + plan.rocks.length;
+    if (meadow) { make(bladeGeo, leafMat, meadow.tufts); make(speckGeo, leafMat, meadow.specks); report.meadow = meadow.tufts.length + meadow.specks.length; }
+    report.distant = n;
   }
+
   // ---- Manzara (v3.19.0): göl, tepeler, arka plan dağları, bulutlar — oyuncu hiçbir açıdan boşluk görmesin ----
   var LAND_GREENS = [0x7ccf84, 0x6fc07a, 0x86d98f, 0x5fb36d];
   var LAND_PEAKS = [0x7d8fb8, 0x8796bd, 0x6d80ad];        // uzak dağlar (sisle maviye çalar)
@@ -619,7 +668,7 @@ var City3D = (function () {
     while (hills.length < 44 && tries < 500) {
       tries++;
       var ang = rnd(seed, tries, 8, 410) * Math.PI * 2, rad = 34 + rnd(seed, tries, 9, 411) * 62;
-      var h = { x: Math.cos(ang) * rad, z: Math.sin(ang) * rad * 0.8, sx: 5 + rnd(seed, tries, 10, 412) * 9, sz: 5 + rnd(seed, tries, 11, 413) * 9, sy: 1.6 + rnd(seed, tries, 12, 414) * 2.6,
+      var h = { x: Math.cos(ang) * rad, z: Math.sin(ang) * rad * 0.8, sx: 5 + rnd(seed, tries, 10, 412) * 9, sz: 5 + rnd(seed, tries, 11, 413) * 9, sy: 2.2 + rnd(seed, tries, 12, 414) * 2.8,
                 c: LAND_GREENS[Math.floor(rnd(seed, tries, 13, 415) * LAND_GREENS.length) % LAND_GREENS.length] };
       h.y0 = -0.25 * h.sy;
       var dl = Math.sqrt((h.x - lake.cx) * (h.x - lake.cx) + (h.z - lake.cz) * (h.z - lake.cz));
@@ -693,7 +742,7 @@ var City3D = (function () {
   function buildCity(T, loadModel, city) {
     var cols = city.cols, rows = city.rows;
     var group = new T.Group();
-    var report = { placed: 0, roads: 0, fallback: 0, missing: [], roadCells: [], sprites: 0, scenery: 0, sceneryMeshes: 0, pavement: 0, gate: false, graph: null, graphReal: 0, distant: 0 };
+    var report = { placed: 0, roads: 0, fallback: 0, missing: [], roadCells: [], sprites: 0, scenery: 0, sceneryMeshes: 0, pavement: 0, gate: false, graph: null, graphReal: 0, distant: 0, meadow: 0 };
     var dispose = [];   // bu sahneye özgü kaynaklar (modeller önbellekten klonlandığı için paylaşılan geometriye dokunulmaz)
     var holders = {};
     group.userData.dispose = dispose; group.userData.holders = holders;
@@ -810,7 +859,7 @@ var City3D = (function () {
     }).then(function () {
       try { return addScenery(T, loadModel, group, planScenery(city, city.seed || 0), dispose, report); } catch (e) { return null; }
     }).then(function () {
-      try { addDistant(T, group, planDistant(city, city.seed || 0), dispose, report); } catch (e) { /* uzak orman yoksa şehir yine kurulur */ }
+      try { addDistant(T, group, planDistant(city, city.seed || 0), dispose, report, planMeadow(city, city.seed || 0)); } catch (e) { /* uzak orman yoksa şehir yine kurulur */ }
       try { addLandscape(T, group, city.land, dispose, report); } catch (e) { /* manzara yoksa şehir yine kurulur */ }
     }).then(function () { return { group: group, report: report }; }, function () { return { group: group, report: report }; });
   }
@@ -1446,7 +1495,7 @@ var City3D = (function () {
     // test için
     _init: function (T, GLTFLoaderClass) { S.T = T; S.loader = new GLTFLoaderClass(); S.ray = new T.Raycaster(); S.plane = new T.Plane(new T.Vector3(0, 1, 0), 0); },
     _startLife: startLife, _setLife: setLife, _zoneFrame: zoneFrame, _life: { buildGraph: buildGraph, createSim: createSim, simPopulate: simPopulate, simStep: simStep, simCount: simCount, simAgent: simAgent, laneCurve: laneCurve, curveAt: curveAt, LIFE: LIFE, DV: DV, OPP: OPP },
-    _state: S, _buildCity: buildCity, _planScenery: planScenery, _planLandscape: planLandscape, _terrainY: terrainY, _inLake: inLake, _planDistant: planDistant, _groundTexture: groundTexture, _planPavement: planPavement, _roadPieceFor: roadPieceFor, _ROAD_BASE: ROAD_BASE, _TYPES: TYPES, _ROAD_FILE: ROAD_FILE, _todOf: todOf,
+    _state: S, _buildCity: buildCity, _planScenery: planScenery, _planMeadow: planMeadow, _planLandscape: planLandscape, _terrainY: terrainY, _inLake: inLake, _planDistant: planDistant, _groundTexture: groundTexture, _planPavement: planPavement, _roadPieceFor: roadPieceFor, _ROAD_BASE: ROAD_BASE, _TYPES: TYPES, _ROAD_FILE: ROAD_FILE, _todOf: todOf,
     _variantIndex: variantIndex, _cellFromPoint: cellFromPoint, _makeHolder: makeHolder, _citySig: citySig, _applyCamera: applyCamera, _panBy: panBy,
     _onDown: onDown, _onMove: onMove, _onUp: onUp, _onWheel: onWheel, _onKey: onKey, _groundPoint: groundPoint, _mount: mount, _rebuild: rebuild, _VIEW: VIEW
   };
