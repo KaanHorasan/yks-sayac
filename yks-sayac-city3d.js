@@ -259,9 +259,9 @@ var City3D = (function () {
   // Gün ışığı ayarları (şiddetler fiziksel ışık birimlerinde; görünüme göre buradan ayarlanır)
   var TOD = {
     day:   { bg: 0xbfe6f7, sky: 0xffffff, ground: 0x9aa8b4, hemi: 1.2, sun: 0xfff4e0, sunI: 2.6, pos: [8, 14, 6] },
-    dawn:  { bg: 0xf7cfa6, sky: 0xffe2c8, ground: 0x8a7f8f, hemi: 1.0, sun: 0xffc89a, sunI: 2.0, pos: [-10, 6, 4] },
-    dusk:  { bg: 0x7b6aa0, sky: 0xd9b8c8, ground: 0x544a6e, hemi: 0.9, sun: 0xff9a6a, sunI: 1.6, pos: [10, 5, -4] },
-    night: { bg: 0x0d1433, sky: 0x6a7ab8, ground: 0x28324e, hemi: 1.1, sun: 0x9fb4ff, sunI: 0.9, pos: [-6, 12, 8] }
+    dawn:  { bg: 0xf7cfa6, sky: 0xffe2c8, ground: 0x8a8f8a, hemi: 1.05, sun: 0xffc89a, sunI: 2.0, pos: [-10, 6, 4] },
+    dusk:  { bg: 0x7b6aa0, sky: 0xe6c8d0, ground: 0x5d6a58, hemi: 1.1, sun: 0xffc08a, sunI: 1.9, pos: [10, 5, -4] },
+    night: { bg: 0x0d1433, sky: 0x6a7ab8, ground: 0x2f4a42, hemi: 1.25, sun: 0x9fb4ff, sunI: 1.0, pos: [-6, 12, 8] }
   };
   function todOf(hour) { return hour >= 6 && hour < 8 ? "dawn" : (hour >= 8 && hour < 17 ? "day" : (hour >= 17 && hour < 20 ? "dusk" : "night")); }
 
@@ -407,11 +407,18 @@ var City3D = (function () {
         }
       }   // vahşi bölge ve dış halka: doğa yamaları (getNature)
     }
+    // yapılabilir bölgeyi çevreleyen alçak ahşap çit (giriş karesi açık): şehir sınırı belli olsun
+    if (city.zone && city.fence !== false) {
+      var zx0 = zone.x0 - cols / 2, zx1 = zone.x1 + 1 - cols / 2, zz0 = zone.y0 - rows / 2, zz1 = zone.y1 + 1 - rows / 2, q2;
+      var fence = function (x, z, rot) { out.push({ m: "nat/fence_simple", x: x, z: z, rot: rot, s: 1, far: false }); };
+      for (q2 = zone.x0; q2 <= zone.x1; q2++) { fence(q2 + 0.5 - cols / 2, zz0, 0); if (!(ent && q2 === ent.gx)) fence(q2 + 0.5 - cols / 2, zz1, 0); }
+      for (q2 = zone.y0; q2 <= zone.y1; q2++) { fence(zx0, q2 + 0.5 - rows / 2, Math.PI / 2); fence(zx1, q2 + 0.5 - rows / 2, Math.PI / 2); }
+    }
     getNature(city, seed).near.forEach(function (it) { out.push(it); });
     return out;
   }
   // Kit renkleri pastel turkuaz/pembemsi; şehrin yeşil zeminine uyum için yeşile ve toprak tonuna çekilir (yalnızca süslerde).
-  var SCENERY_TINT = { grass: 0x78d47f, leafsGreen: 0x62c06e, leafsDark: 0x4ca564, dirt: 0xc7b49d, woodBark: 0xb98a63, woodBarkDark: 0x9d7352 };
+  var SCENERY_TINT = { grass: 0x78d47f, leafsGreen: 0x62c06e, leafsDark: 0x4ca564, dirt: 0xc7b49d, woodBark: 0xb98a63, woodBarkDark: 0x9d7352, wood: 0xb98a63, woodDark: 0x8d6446 };
   var SCENERY_CAST = /tree_|rock_large|rock_tall|stone_large|stone_tall/;   // yalnızca iri şekiller gölge düşürür (yığılan küçük gölgeler çalılığı simsiyah yapıyordu)
   // Süsleri model başına InstancedMesh olarak ekler (yüzlerce süs birkaç çizim çağrısı). Uzak halka gölge düşürmez.
   function addScenery(T, loadModel, group, items, dispose, report) {
@@ -523,12 +530,12 @@ var City3D = (function () {
   var DIST_FROM = 8, DIST_TO = 34;   // gerçek modelli halkanın (SC_RING) ardından, ucuz şekillerden uzak orman
   var MEADOW_TO = 28;                // ince ot ve çiçek katmanı: dünya kenarından bu kareye kadar
   // Yaprak paleti: şehrin yeşil zeminiyle uyumlu yeşiller, az turkuaz vurgu, seyrek sarı/sonbahar
-  var DIST_GREEN = [0x5fae6a, 0x6dbd75, 0x4f9a5f, 0x7cc47f, 0x58b59a];
+  var DIST_GREEN = [0x6fc47a, 0x7fd08a, 0x5fb36d, 0x8bd994, 0x63c4a6];
   var DIST_YELLOW = 0xd9b94a, DIST_FALL = 0xf2994a;
   // Saf: uzak ağaç/çalı/kaya yerleşimi: doğa yamalarının (koru/çalılık/kaya) dünya kenarından uzak (ucuz şekilli) kısmı.
   function planDistant(city, seed) { return getNature(city, seed).far; }
   // ---- Doğa yamaları (v3.21.0): bitkiler tek tek serpilmez; koru (ağaç kümesi), çalılık ve kaya öbeği olarak yama yama gelir, aralarında açık çayır kalır ----
-  var NAT = { cell: 7, ringTo: 7, treeDens: 0.28, bushDens: 0.8 };   // cell: yama kafesi (dünya birimi); ringTo: gerçek modelli yakın halka; yoğunluk ayarı burada
+  var NAT = { cell: 7, ringTo: 7, treeDens: 0.4, bushDens: 0.8 };   // cell: yama kafesi (dünya birimi); ringTo: gerçek modelli yakın halka; yoğunluk ayarı burada
   var TREE_STYLES = {   // koru türleri: aynı korudaki ağaçlar aynı soydan olur
     pine:  [["nat/tree_pineDefaultA", 0.7], ["nat/tree_pineTallA", 0.65], ["nat/tree_pineSmallA", 0.85]],
     broad: [["nat/tree_default", 0.7], ["nat/tree_oak", 0.75], ["nat/tree_fat", 0.8], ["nat/tree_small", 0.85]],
@@ -574,7 +581,7 @@ var City3D = (function () {
         near.push({ m: m[0], x: x, z: z, rot: rot, s: m[1] * sc, far: d > 0 });
       } else {   // ucuz şekiller
         var y = terrainY(land, x, z);
-        if (kind === "tree") far.trees.push({ x: x, z: z, y: y, rot: rot, s: sc * 1.15, c: o.color, shape: o.shape });
+        if (kind === "tree") far.trees.push({ x: x, z: z, y: y, rot: rot, s: sc * 1.3, c: o.color, shape: o.shape });
         else if (kind === "bush") far.bushes.push({ x: x, z: z, y: y, rot: rot, s: sc * 1.1, c: o.color });
         else if (kind === "rock" || kind === "pebble") far.rocks.push({ x: x, z: z, y: y, rot: rot, s: sc * 0.9, c: 0xb9c4cc });
       }
@@ -599,8 +606,8 @@ var City3D = (function () {
       var fN = smoothNoise(seed, ix, iy, 701, 3), u = rnd(seed, ix + 300, iy + 300, 702), type = null;
       var inGrid = false;
       if (d0 === 0) continue;   // dünyanın içi (vahşi bölge) aşağıdaki ince kafesli ikinci geçişte
-      if (d0 <= NAT.ringTo) { var pg = 0.3 + 0.25 * fN; type = u < pg ? "grove" : (u < pg + 0.15 ? "thicket" : (u < pg + 0.2 ? "outcrop" : null)); }
-      else { var pf = (0.5 - 0.38 * (d0 - NAT.ringTo) / (DIST_TO - NAT.ringTo)) * (fN < 0.35 ? 0.2 : (fN < 0.62 ? 1 : 1.7)); type = u < pf ? "grove" : (u < pf + 0.07 ? "thicket" : (u < pf + 0.1 ? "outcrop" : null)); }
+      if (d0 <= NAT.ringTo) { var pg = 0.34 + 0.25 * fN; type = u < pg ? "grove" : (u < pg + 0.15 ? "thicket" : (u < pg + 0.2 ? "outcrop" : null)); }
+      else { var pf = (0.6 - 0.44 * (d0 - NAT.ringTo) / (DIST_TO - NAT.ringTo)) * (fN < 0.35 ? 0.2 : (fN < 0.62 ? 1 : 1.7)); type = u < pf ? "grove" : (u < pf + 0.07 ? "thicket" : (u < pf + 0.1 ? "outcrop" : null)); }
       if (!type) continue;
       var rs = rnd(seed, ix + 300, iy + 300, 703), rg = rnd(seed, ix + 300, iy + 300, 704);
       if (type === "grove") {
@@ -675,7 +682,7 @@ var City3D = (function () {
       if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) continue;
       if (ent && gy >= rows && gy <= rows + LIFE.ext + 1 && Math.abs(gx - ent.gx) <= 1) continue;   // yol ve kaldırım üstünde ot olmaz
       var dist = Math.max(-gx, gx - (cols - 1), -gy, gy - (rows - 1)), fy = rows - 1 - gy;
-      var g = smoothNoise(seed, gx, fy, 601, 3.2), n = Math.floor(g * g * 4.2 * (1 - dist / (MEADOW_TO + 8)));   // yakında sık, uzakta seyrek
+      var g = smoothNoise(seed, gx, fy, 601, 3.2), n = Math.floor(g * g * 2.3 * (1 - dist / (MEADOW_TO + 8)));   // yakında sık, uzakta seyrek
       var x0 = gx - cols / 2, z0 = gy - rows / 2, i;
       for (i = 0; i < n; i++) {
         var x = x0 + 0.05 + rnd(seed, gx + 800, fy + 800, 610 + i) * 0.9, z = z0 + 0.05 + rnd(seed, gx + 800, fy + 800, 620 + i) * 0.9;
@@ -712,9 +719,9 @@ var City3D = (function () {
     }
     var leafMat = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, flatShading: true });
     var trunkMat = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0, flatShading: true });
-    var coneGeo = new T.ConeGeometry(0.3, 0.95, 6); coneGeo.translate(0, 0.12 + 0.475, 0);
-    var tallGeo = new T.ConeGeometry(0.19, 1.35, 6); tallGeo.translate(0, 0.12 + 0.675, 0);
-    var roundGeo = new T.IcosahedronGeometry(0.34, 0); roundGeo.scale(1, 0.9, 1); roundGeo.translate(0, 0.52, 0);
+    var coneGeo = new T.ConeGeometry(0.38, 1.05, 6); coneGeo.translate(0, 0.12 + 0.525, 0);
+    var tallGeo = new T.ConeGeometry(0.26, 1.5, 6); tallGeo.translate(0, 0.12 + 0.75, 0);
+    var roundGeo = new T.IcosahedronGeometry(0.42, 0); roundGeo.scale(1, 0.9, 1); roundGeo.translate(0, 0.58, 0);
     var trunkGeo = new T.CylinderGeometry(0.05, 0.06, 0.28, 5); trunkGeo.translate(0, 0.14, 0);
     var bushGeo = new T.IcosahedronGeometry(0.3, 0); bushGeo.translate(0, 0.1, 0);
     var rockGeo = new T.DodecahedronGeometry(0.22, 0); rockGeo.translate(0, 0.08, 0);
@@ -846,7 +853,7 @@ var City3D = (function () {
     var data = new Uint8Array(cols * rows * 4);
     for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) {
       var i = (r * cols + c) * 4, odd = (r + c) % 2, zn = inZone(c, r);
-      data[i] = odd ? 126 : 134; data[i + 1] = odd ? 190 : 200; data[i + 2] = odd ? 104 : 110; data[i + 3] = zn ? 255 : 0;   // vahşi kareler saydam: altındaki doğal zemin görünür
+      data[i] = odd ? 130 : 134; data[i + 1] = odd ? 194 : 200; data[i + 2] = odd ? 106 : 110; data[i + 3] = zn ? 255 : 0;   // vahşi kareler saydam: altındaki doğal zemin görünür
     }
     var tex = new T.DataTexture(data, cols, rows, T.RGBAFormat);
     tex.magFilter = T.NearestFilter; tex.minFilter = T.NearestFilter; tex.colorSpace = T.SRGBColorSpace; tex.needsUpdate = true;
