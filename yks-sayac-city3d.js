@@ -996,7 +996,13 @@ var City3D = (function () {
       var parts = rel.split("/");
       S.cache[rel] = new Promise(function (res, rej) {
         S.loader.load(url(MODEL_BASE + parts[0] + "/" + parts[1] + ".glb"), function (g) {
-          g.scene.traverse(function (o) { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+          g.scene.traverse(function (o) {
+            if (!o.isMesh) return;
+            o.castShadow = true; o.receiveShadow = true;
+            // Nature Kit malzemeleri metallicFactor=1 ile gelir; sahnede ortam haritası yok, metal yüzey ışık alsa da siyah çıkar. Düzeltme: metalliği kapat.
+            var ms = Array.isArray(o.material) ? o.material : [o.material];
+            ms.forEach(function (m) { if (m && m.metalness !== undefined && m.metalness > 0.01) m.metalness = 0; });
+          });
           S.anims[rel] = g.animations || [];
           res(g.scene);
         }, undefined, rej);
@@ -1586,7 +1592,7 @@ var City3D = (function () {
     isReady: function () { return S.mounted; },
     // test için
     _init: function (T, GLTFLoaderClass) { S.T = T; S.loader = new GLTFLoaderClass(); S.ray = new T.Raycaster(); S.plane = new T.Plane(new T.Vector3(0, 1, 0), 0); },
-    _startLife: startLife, _setLife: setLife, _zoneFrame: zoneFrame, _life: { buildGraph: buildGraph, createSim: createSim, simPopulate: simPopulate, simStep: simStep, simCount: simCount, simAgent: simAgent, laneCurve: laneCurve, curveAt: curveAt, LIFE: LIFE, DV: DV, OPP: OPP },
+    _loadModel: loadModel, _startLife: startLife, _setLife: setLife, _zoneFrame: zoneFrame, _life: { buildGraph: buildGraph, createSim: createSim, simPopulate: simPopulate, simStep: simStep, simCount: simCount, simAgent: simAgent, laneCurve: laneCurve, curveAt: curveAt, LIFE: LIFE, DV: DV, OPP: OPP },
     _state: S, _buildCity: buildCity, _planScenery: planScenery, _planMeadow: planMeadow, _planLandscape: planLandscape, _terrainY: terrainY, _inLake: inLake, _planDistant: planDistant, _groundTexture: groundTexture, _planPavement: planPavement, _roadPieceFor: roadPieceFor, _ROAD_BASE: ROAD_BASE, _TYPES: TYPES, _ROAD_FILE: ROAD_FILE, _todOf: todOf,
     _variantIndex: variantIndex, _cellFromPoint: cellFromPoint, _makeHolder: makeHolder, _citySig: citySig, _applyCamera: applyCamera, _panBy: panBy,
     _onDown: onDown, _onMove: onMove, _onUp: onUp, _onWheel: onWheel, _onKey: onKey, _groundPoint: groundPoint, _mount: mount, _rebuild: rebuild, _VIEW: VIEW
