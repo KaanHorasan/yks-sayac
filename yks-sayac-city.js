@@ -677,7 +677,7 @@ function cityDecorCells(list, exceptId) {   // içinde dekor olan ana kareler (b
   });
   return cells;
 }
-// Dekorlar nesnelerin üstüne konabilir (v3.23.0): bina karesine, başka dekorun yarım karesine (en çok 3 kat). Yola yalnızca onRoad olanlar (araç, koni, bariyer).
+// Dekorlar nesnelerin üstüne ve yola konabilir (bina karesi, başka dekorun yarım karesi (en çok 3 kat), yol karesi). Trafikle ilgili olanlar (roadOnly: araç, koni, bariyer, trafik lambası, yol levhası) YALNIZCA yola konabilir. Giriş karesi hep boş kalır.
 var CITY_MAX_DECOR = 400, CITY_MAX_STACK = 3;
 function citySubStack(list, exceptId, sx, sy) {   // aynı yarım karedeki dekor sayısı
   var n = 0;
@@ -710,10 +710,8 @@ function cityCanPlaceActive(active, cell) {
     if (sx < 0 || sy < 0 || gx >= CITY_COLS || gy >= CITY_ROWS || !cityCellInZone(gx, gy)) return false;
     var occId = cityOccupancy(list, active.id)[gx + "," + gy];
     if (occId === "__entrance") return false;
-    if (occId) {
-      var ob = list.filter(function (x) { return x.id === occId; })[0], type = cityTypeOf(active);
-      if (ob && cityIsRoad(ob) && !(type && type.onRoad)) return false;   // yol yüzeyine süs konmaz; bina üstüne serbest
-    }
+    var ob = occId ? list.filter(function (x) { return x.id === occId; })[0] : null, tp = cityTypeOf(active);
+    if (tp && tp.roadOnly && !(ob && cityIsRoad(ob))) return false;   // trafik eşyası yalnızca yol karesine
     if (citySubStack(list, active.id, sx, sy) >= CITY_MAX_STACK) return false;
     var isNew = !list.some(function (x) { return x.id === active.id; });
     if (isNew && cityDecorCount(list) >= CITY_MAX_DECOR) return false;
@@ -827,6 +825,18 @@ function cityActiveItem() {
   }
   return null;
 }
+function cityNewBuilding(type) {
+  var building = {
+    id: "b" + Date.now() + Math.random().toString(36).slice(2, 6),
+    emoji: type.emoji,
+    name: type.name,
+    builtAt: Date.now()
+  };
+  if (type.images && type.images.length) {
+    building.imageKey = type.images[Math.floor(Math.random() * type.images.length)];
+  }
+  return building;
+}
 function buyBuilding(type) {
   if (cityActiveItem() || (cityState.coins || 0) < type.cost || cityTypeLocked(type)) return;
   if (type.cat === "dekor" && !type.road && cityDecorCount() >= CITY_MAX_DECOR) {   // çok sayıda dekor sahneyi yavaşlatır
@@ -839,16 +849,7 @@ function buyBuilding(type) {
     cityCelebrate(["🎯 Hedefine ulaştın: " + type.name + "!"]);
   }
   saveCity();
-  var building = {
-    id: "b" + Date.now() + Math.random().toString(36).slice(2, 6),
-    emoji: type.emoji,
-    name: type.name,
-    builtAt: Date.now()
-  };
-  if (type.images && type.images.length) {
-    building.imageKey = type.images[Math.floor(Math.random() * type.images.length)];
-  }
-  pendingBuilding = building;
+  pendingBuilding = cityNewBuilding(type);
   selectedCityItemId = null;
   renderCity();
   renderCityViewAll();
@@ -964,7 +965,7 @@ function renderMarket() {
     item.innerHTML =
       '<div class="city-market-emoji">' + preview + '</div>' +
       '<div class="city-market-name">' + type.name + '</div>' +
-      '<div class="city-market-cost">' + (type.cost > 0 ? type.cost + ' altın' : 'Ücretsiz') + ' · ' + ((type.population || 0) > 0 ? '+' + type.population + ' nüfus' : 'süs') + '</div>' +
+      '<div class="city-market-cost">' + (type.cost > 0 ? type.cost + ' altın' : 'Ücretsiz') + ' · ' + ((type.population || 0) > 0 ? '+' + type.population + ' nüfus' : 'süs') + (type.roadOnly ? ' · 🛣️ yalnızca yola' : '') + '</div>' +
       (locked ? '<div class="city-market-lock">🔒 ' + CITY_LEVELS[type.minLevel].name + ' seviyesinde açılır (' + CITY_LEVELS[type.minLevel].pop + ' nüfus)</div>' : "") +
       '<button type="button" class="city-market-buy-btn"' + (canAfford ? "" : " disabled") +
       (busy ? ' title="Önce elindeki yapıyı yerleştir"' : (locked ? ' title="Şehir seviyesi yetmiyor"' : "")) + '>' + (type.cost > 0 ? 'Satın Al' : 'Al') + '</button>' +
@@ -1002,7 +1003,10 @@ function placeActiveItem(active, cell) {
   if (pendingBuilding) {
     if (active.name === "Tabela") active.label = askSignLabel(active.label);
     cityState.buildings.push(active);
-    pendingBuilding = null;
+    // Ücretsiz yapılar (yol, ücretsiz dekor) arka arkaya yerleştirilir: bir tane konunca yenisi hazır gelir; bitirmek için İptal
+    var ft = cityTypeOf(active);
+    var more = ft && ft.cost === 0 && !(ft.cat === "dekor" && !ft.road && cityDecorCount() >= CITY_MAX_DECOR);
+    pendingBuilding = more ? cityNewBuilding(ft) : null;
   } else {
     movingId = null;
   }

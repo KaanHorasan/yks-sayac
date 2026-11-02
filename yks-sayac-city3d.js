@@ -921,7 +921,7 @@ var City3D = (function () {
         if (holder.userData.fallback) { report.fallback++; if (TYPES[b.name] && TYPES[b.name].m) report.missing.push(holder.userData.file); }
         var sub = (city.isDecor && city.isDecor(b)) ? city.subOf(b) : null;   // dekor: yarım kare konumu
         if (sub) {
-          var onRoad = type.onRoad && roads[Math.floor(sub.sx / 2) + "," + Math.floor(sub.sy / 2)];
+          var onRoad = roads[Math.floor(sub.sx / 2) + "," + Math.floor(sub.sy / 2)];   // yol karesindeki dekor yol yüzeyine oturur
           holder.position.set((sub.sx + 0.5) / 2 - cols / 2, onRoad ? 0.02 : 0, (sub.sy + 0.5) / 2 - rows / 2);
         } else holder.position.set(cellX(b.gx, span), 0, cellZ(b.gy));
         group.add(holder); holders[b.id] = holder; report.placed++;
@@ -1282,10 +1282,11 @@ var City3D = (function () {
       S.uiKey = hintKey;
       S.hint.innerHTML = "";
       if (active) {
-        var isMove = !!movingId && !pendingBuilding;
-        S.hint.appendChild(el("span", "", (isMove ? "✋ Yeni yerini seç: " : (cityIsDecor(active) ? "📍 Küçük kareye tıkla (dekor yarım kare hassasiyetli): " : "📍 Yerleştirmek için bir kareye tıkla: ")) + active.emoji + " " + active.name));
+        var isMove = !!movingId && !pendingBuilding, at = cityTypeOf(active), chain = !isMove && !!at && at.cost === 0;   // ücretsiz yapılar art arda konur
+        S.hint.appendChild(el("span", "", (isMove ? "✋ Yeni yerini seç: " : (cityIsDecor(active) ? "📍 Küçük kareye tıkla (dekor yarım kare hassasiyetli): " : "📍 Yerleştirmek için bir kareye tıkla: ")) + active.emoji + " " + active.name +
+          (at && at.roadOnly ? " (yalnızca yola)" : "") + (chain ? " — art arda yerleştirebilirsin" : "")));
         if (!cityIsRoad(active)) S.hint.appendChild(btn("↻ Döndür (R)", "", rotateActiveOrSelected));
-        S.hint.appendChild(btn("Vazgeç", "", cancelPendingPlacement));
+        S.hint.appendChild(btn(chain ? "✓ Bitir" : "Vazgeç", "", cancelPendingPlacement));
       }
       S.hint.hidden = !active;
     }
