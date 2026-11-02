@@ -810,7 +810,7 @@ var City3D = (function () {
     var waterMat = new T.MeshStandardMaterial({ color: 0x4fb3e8, roughness: 0.3, metalness: 0, emissive: 0x2f7fc0, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     var sandGeo = lakeFan(T, land.lake, 1.12, 0.6), waterGeo = lakeFan(T, land.lake, 1, 0);
     var sand = new T.Mesh(sandGeo, sandMat), water = new T.Mesh(waterGeo, waterMat);
-    sand.position.y = -0.055; water.position.y = -0.05; sand.receiveShadow = false; water.receiveShadow = false;
+    sand.position.y = -0.012; water.position.y = -0.008; sand.receiveShadow = false; water.receiveShadow = false;
     group.add(sand); group.add(water); dispose.push(sandMat, waterMat, sandGeo, waterGeo); glow.push(waterMat);
     function inst(geo, mat, list, place) {
       if (!list.length) return;
@@ -837,6 +837,31 @@ var City3D = (function () {
     list.forEach(function (m) { m.emissiveIntensity = k; });
   }
 
+  // Üst üste koyma (v3.23.0): `up` bayraklı dekorlar altlarındaki yüzeyin yüksekliğine çıkar (bina çatısı, başka dekor). Yüksekliği kayıtta
+  // tutmayız: destek silinir/taşınırsa dekor kendiliğinden zemine iner. Sıra: önce tüm yapılar, sonra dekorlar liste sırasıyla (üstteki, alttakine biner).
+  function surfaceMeshes(holder, out) { holder.traverse(function (o) { if (o.isMesh && o.geometry) out.push(o); }); return out; }
+  function surfaceY(T, targets, x, z) {
+    var rc = new T.Raycaster(new T.Vector3(x, 40, z), new T.Vector3(0, -1, 0), 0, 60), hits = rc.intersectObjects(targets, false);
+    return hits.length ? hits[0].point.y : null;
+  }
+  function settleStacked(T, group, holders, city) {
+    if (!city.isDecor) return 0;
+    group.updateMatrixWorld(true);
+    var targets = [], n = 0;
+    city.buildings.forEach(function (b) { var h = holders[b.id]; if (h && !city.isDecor(b)) surfaceMeshes(h, targets); });
+    city.buildings.forEach(function (b) {
+      var h = holders[b.id];
+      if (!h || !city.isDecor(b)) return;
+      if (b.up) {
+        var y = surfaceY(T, targets, h.position.x, h.position.z);
+        if (y !== null && y > h.position.y) { h.position.y = y; n++; }
+        h.updateMatrixWorld(true);
+      }
+      surfaceMeshes(h, targets);
+    });
+    return n;
+  }
+
   // city: { cols, rows, buildings, typeOf(b), isRoad(b), isDecor?(b), subOf?(b), seed?, zone?, entrance? }; loadModel("kit/dosya") -> Promise<Object3D>
   function buildCity(T, loadModel, city) {
     var cols = city.cols, rows = city.rows;
@@ -849,25 +874,13 @@ var City3D = (function () {
     city.land = planLandscape(city, city.seed || 0);   // göl/tepe konumları süs ve orman yerleşiminden önce bilinir
     var inZone = function (gx, gy) { return gx >= zone.x0 && gx <= zone.x1 && gy >= zone.y0 && gy <= zone.y1; };
 
-    // zemin: yapılabilir bölge açık çimen, çevresi koyu vahşi doğa; her şey çok geniş bir düzlemin üstünde (şehir havada durmaz)
-    var data = new Uint8Array(cols * rows * 4);
-    for (var r = 0; r < rows; r++) for (var c = 0; c < cols; c++) {
-      var i = (r * cols + c) * 4, odd = (r + c) % 2, zn = inZone(c, r);
-      data[i] = odd ? 130 : 134; data[i + 1] = odd ? 194 : 200; data[i + 2] = odd ? 106 : 110; data[i + 3] = zn ? 255 : 0;   // vahşi kareler saydam: altındaki doğal zemin görünür
-    }
-    var tex = new T.DataTexture(data, cols, rows, T.RGBAFormat);
-    tex.magFilter = T.NearestFilter; tex.minFilter = T.NearestFilter; tex.colorSpace = T.SRGBColorSpace; tex.needsUpdate = true;
-    var groundGeo = new T.PlaneGeometry(cols, rows), groundMat = new T.MeshStandardMaterial({ map: tex, roughness: 1, metalness: 0, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0, alphaTest: 0.5 });
-    var ground = new T.Mesh(groundGeo, groundMat);
-    dispose.push(tex, groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true;
-    group.add(ground);
+    // zemin: tek, çok geniş, dokulu çimen düzlemi (şehir havada durmaz). Yapılabilir bölgeyi çit ve yerleştirme ızgarası belirtir; ayrı bir "levha" yok.
     var farTex = groundTexture(T, city.seed || 0); farTex.repeat.set(14, 14);   // 50 birimde bir tekrar eden doğal leke dokusu
     var farGeo = new T.PlaneGeometry(700, 700), farMat = new T.MeshStandardMaterial({ map: farTex, roughness: 1, metalness: 0, emissive: 0xffffff, emissiveMap: farTex, emissiveIntensity: 0 });
     var farGround = new T.Mesh(farGeo, farMat);
     dispose.push(farGeo, farMat, farTex);
-    group.userData.glow = [groundMat, farMat];
-    farGround.rotation.x = -Math.PI / 2; farGround.position.y = -0.06;
+    group.userData.glow = [farMat];
+    farGround.rotation.x = -Math.PI / 2; farGround.position.y = -0.02; farGround.receiveShadow = true;   // yapıların/ağaçların gölgesini alır
     group.add(farGround);
 
     var cellX = function (gx, span) { return gx + span / 2 - cols / 2; };
@@ -944,6 +957,7 @@ var City3D = (function () {
     }
 
     return Promise.all(jobs).then(function () {
+      try { report.stacked = settleStacked(T, group, holders, city); } catch (e) { report.stacked = 0; }
       report.roadCells.forEach(function (rc) { graphCells.push({ gx: rc.gx, gy: rc.gy, dirs: rc.dirs }); });
       report.graphReal = graphCells.filter(function (g) { return !g.ext && g.dirs.length; }).length;
       report.graph = buildGraph(graphCells, ent ? ent.gx + "," + (ent.gy + EXT) : null);
@@ -1031,9 +1045,9 @@ var City3D = (function () {
 
   // ---- Kamera ----
   // Kamera, yapılabilir bölgeyi (çevresinde birkaç kare vahşi alanla) ekrana sığdırır; dünya daha geniştir, kaydırarak görülür.
-  function zoneFrame() {
-    var z = cityZone(), w = z.x1 - z.x0 + 1 + 6, h = z.y1 - z.y0 + 1 + 4;
-    return { w: w, h: h, cz: (z.y0 + z.y1 + 1) / 2 - CITY_ROWS / 2 + 0.5, cx: (z.x0 + z.x1 + 1) / 2 - CITY_COLS / 2 };
+  function zoneFrame() {   // bölge büyükse başlangıç görünümü yalnızca ön kısmı (giriş çevresini) kapsar; geri kalanı kaydırarak/uzaklaşarak görülür
+    var z = cityZone(), w = Math.min(z.x1 - z.x0 + 1 + 6, 28), h = Math.min(z.y1 - z.y0 + 1 + 4, 18);
+    return { w: w, h: h, cz: CITY_ROWS / 2 - h / 2 + 2, cx: (z.x0 + z.x1 + 1) / 2 - CITY_COLS / 2 };
   }
   function camDistance() {
     var f = zoneFrame(), r = Math.sqrt(f.w * f.w + f.h * f.h) / 2, t = Math.tan(VIEW.fov * Math.PI / 360);
@@ -1178,13 +1192,23 @@ var City3D = (function () {
                           decor ? (cell.sy + 0.5) / 2 - CITY_ROWS / 2 : cell.gy + 0.5 - CITY_ROWS / 2);
     S.marker.material.color.set(ok ? 0x2ecc71 : 0xe74c3c);
   }
+  function surfaceYAt(x, z, excludeId) {   // imleç altındaki yapı/dekor yüzeyinin yüksekliği (mevcut sahne parçalarına ışın)
+    if (!S.group || !S.T) return null;
+    var targets = [], holders = S.group.userData.holders || {};
+    Object.keys(holders).forEach(function (id) { if (id !== excludeId) surfaceMeshes(holders[id], targets); });
+    return surfaceY(S.T, targets, x, z);
+  }
   function moveGhost(cell) {
     var active = cityActiveItem();
     if (!active || !S.ghost || !cell) return;
     var span = cityItemSpan(active), decor = cityIsDecor(active);
     if (decor && typeof cell.sx !== "number") cell = { gx: cell.gx, gy: cell.gy, sx: cell.gx * 2, sy: cell.gy * 2 };   // yapı seçiminden dekora geçiş
     var ok = cityCanPlaceActive(active, cell);
-    if (decor) S.ghost.position.set((cell.sx + 0.5) / 2 - CITY_COLS / 2, 0.02, (cell.sy + 0.5) / 2 - CITY_ROWS / 2);
+    if (decor) {
+      var gxw = (cell.sx + 0.5) / 2 - CITY_COLS / 2, gzw = (cell.sy + 0.5) / 2 - CITY_ROWS / 2, gyw = 0.02;
+      if (ok && cityNeedsSupport(active, cell)) { var sy0 = surfaceYAt(gxw, gzw, active.id); if (sy0 !== null) gyw = sy0 + 0.02; }
+      S.ghost.position.set(gxw, gyw, gzw);
+    }
     else S.ghost.position.set(cell.gx + span / 2 - CITY_COLS / 2, 0.02, cell.gy + 0.5 - CITY_ROWS / 2);
     S.ghost.visible = true;
     S.ghostCell = cell;
@@ -1241,7 +1265,7 @@ var City3D = (function () {
         var span = cityItemSpan(sel), type = cityTypeOf(sel), road = cityIsRoad(sel), decor = cityIsDecor(sel), sq = decor ? citySubOf(sel) : null;
         var T = S.T, ring = new T.Mesh(new T.PlaneGeometry(sq ? 0.46 : span * 0.98, sq ? 0.46 : 0.98), new T.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.5, depthWrite: false }));
         ring.rotation.x = -Math.PI / 2; ring.renderOrder = 2;
-        ring.position.set(sq ? (sq.sx + 0.5) / 2 - CITY_COLS / 2 : sel.gx + span / 2 - CITY_COLS / 2, 0.035, sq ? (sq.sy + 0.5) / 2 - CITY_ROWS / 2 : sel.gy + 0.5 - CITY_ROWS / 2);
+        ring.position.set(sq ? (sq.sx + 0.5) / 2 - CITY_COLS / 2 : sel.gx + span / 2 - CITY_COLS / 2, 0.035 + ((sq && S.group && S.group.userData.holders[sel.id]) ? S.group.userData.holders[sel.id].position.y : 0), sq ? (sq.sy + 0.5) / 2 - CITY_ROWS / 2 : sel.gy + 0.5 - CITY_ROWS / 2);
         S.scene.add(ring); S.selRing = ring;
         if (!road) S.toolbar.appendChild(btn("↻ Döndür", "", rotateActiveOrSelected));
         S.toolbar.appendChild(btn("✋ Taşı", "", startMovingSelected));
@@ -1600,7 +1624,7 @@ var City3D = (function () {
     // test için
     _init: function (T, GLTFLoaderClass) { S.T = T; S.loader = new GLTFLoaderClass(); S.ray = new T.Raycaster(); S.plane = new T.Plane(new T.Vector3(0, 1, 0), 0); },
     _loadModel: loadModel, _startLife: startLife, _setLife: setLife, _zoneFrame: zoneFrame, _life: { buildGraph: buildGraph, createSim: createSim, simPopulate: simPopulate, simStep: simStep, simCount: simCount, simAgent: simAgent, laneCurve: laneCurve, curveAt: curveAt, LIFE: LIFE, DV: DV, OPP: OPP },
-    _state: S, _buildCity: buildCity, _planScenery: planScenery, _planMeadow: planMeadow, _planLandscape: planLandscape, _terrainY: terrainY, _inLake: inLake, _planDistant: planDistant, _groundTexture: groundTexture, _planPavement: planPavement, _roadPieceFor: roadPieceFor, _ROAD_BASE: ROAD_BASE, _TYPES: TYPES, _ROAD_FILE: ROAD_FILE, _todOf: todOf,
+    _state: S, _buildCity: buildCity, _settleStacked: settleStacked, _planScenery: planScenery, _planMeadow: planMeadow, _planLandscape: planLandscape, _terrainY: terrainY, _inLake: inLake, _planDistant: planDistant, _groundTexture: groundTexture, _planPavement: planPavement, _roadPieceFor: roadPieceFor, _ROAD_BASE: ROAD_BASE, _TYPES: TYPES, _ROAD_FILE: ROAD_FILE, _todOf: todOf,
     _variantIndex: variantIndex, _cellFromPoint: cellFromPoint, _makeHolder: makeHolder, _citySig: citySig, _applyCamera: applyCamera, _panBy: panBy,
     _onDown: onDown, _onMove: onMove, _onUp: onUp, _onWheel: onWheel, _onKey: onKey, _groundPoint: groundPoint, _mount: mount, _rebuild: rebuild, _VIEW: VIEW
   };

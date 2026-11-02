@@ -4,7 +4,7 @@
 // Yükleme sırası yks-sayac.html içindeki <script> sırasıdır.
 // ============================================================================
 
-var cityState = { buildings: [], coins: 0, debuffSessionsLeft: 0, layoutV: 2 };
+var cityState = { buildings: [], coins: 0, debuffSessionsLeft: 0, layoutV: 3 };
 function cityKey() { return "focus-city"; }
 function loadCity() {
   return storageGet(cityKey()).then(function (value) {
@@ -311,7 +311,7 @@ function cityCheckProgress() {
 }
 // ---- Aşama 3: bina yıldızları (yükseltme), yeni mahalle (ızgara genişletme), canlı şehir, haftalık şehir kartı ----
 var CITY_UPGRADE = { maxStars: 2, popBonus: 0.25, costFrac: [0.5, 1.0] };   // her yıldız nüfusu +%25; maliyet = yapı fiyatının 0,5× / 1,0×
-var CITY_ROWS_BASE = 12;   // v3.16.0: 5 -> 12 (şehir alanı büyütüldü)
+var CITY_ROWS_BASE = 28;   // v3.23.0: 12 -> 28 (şehir alanı büyütüldü)
 var CITY_EXPANSIONS = [ { cost: 150, level: 2 }, { cost: 400, level: 3 } ];  // her genişleme +2 sıra; Şehir / Metropol seviyesi ister
 function cityApplyRows(state) { CITY_ROWS = CITY_ROWS_BASE + 2 * ((state && state.expansions) || 0); }
 function cityBuildingPop(b, type) { return Math.round(((type && type.population) || 0) * (1 + CITY_UPGRADE.popBonus * (b.stars || 0))); }
@@ -597,28 +597,33 @@ function accrueStudyGold() {
   }
   if (recovered) cityCelebrate(["💪 Toparlandın: odak cezası kalktı"]);
 }
-// ---- Şehir yerleşimi: 24x12 ızgara (v3.16.0'dan önce 14x5), derinlik, yol/dekor ----
-var CITY_COLS = 24, CITY_ROWS = 12;
-// Yerleşim sürümü: 2 = 24 sütun x 12 temel sıra. Eski kayıtlar (sürümsüz = 14x5) bir kez ortalanıp öne hizalanır.
-var CITY_LAYOUT_V = 2, CITY_OLD_COLS = 14, CITY_OLD_ROWS_BASE = 5;
+// ---- Şehir yerleşimi: 40x28 ızgara (v3.23.0; öncesi 24x12, ondan önce 14x5), derinlik, yol/dekor ----
+var CITY_COLS = 40, CITY_ROWS = 28;
+// Yerleşim sürümü: 1 = 14x5 (sürümsüz eski kayıt), 2 = 24x12, 3 = 40x28. Eski kayıtlar sürüm sürüm ortalanıp öne hizalanır.
+var CITY_LAYOUT_V = 3;
+var CITY_LAYOUTS = { 1: { cols: 14, base: 5 }, 2: { cols: 24, base: 12 }, 3: { cols: 40, base: 28 } };
 // ---- Yapılabilir bölge (v3.18.0) ----
-// Dünya: 24 sütun x (12 + 2·genişleme) sıra. Yalnızca iç bölgeye yapı/dekor konabilir; çevresi vahşi doğa (çalı/kaya).
-// Bölge: sütun 5..18 (14 geniş), arkadan 4 sıra vahşi (gy >= 4), ön sıra dahil. "Yeni mahalle" arkaya sıra ekledikçe bölge derinleşir.
+// Dünya: 40 sütun x (28 + 2·genişleme) sıra. Yalnızca iç bölgeye yapı/dekor konabilir; çevresi vahşi doğa (çalı/kaya).
+// Bölge: sütun 6..33 (28 geniş), arkadan 6 sıra vahşi (gy >= 6), ön sıra dahil (22 sıra). "Yeni mahalle" arkaya sıra ekledikçe bölge derinleşir.
 // Şehir girişi: bölgenin ön sırasında sabit bir yol karesi (CITY_ENTRANCE_GX, CITY_ROWS-1); araç/yayalar buradan girip çıkar.
-var CITY_ZONE_X0 = 5, CITY_ZONE_X1 = 18, CITY_ZONE_BACK = 4, CITY_ENTRANCE_GX = 11;
+var CITY_ZONE_X0 = 6, CITY_ZONE_X1 = 33, CITY_ZONE_BACK = 6, CITY_ENTRANCE_GX = 19;
 function cityCellInZone(gx, gy) { return gx >= CITY_ZONE_X0 && gx <= CITY_ZONE_X1 && gy >= CITY_ZONE_BACK && gy <= CITY_ROWS - 1; }
 function cityZone() { return { x0: CITY_ZONE_X0, x1: CITY_ZONE_X1, y0: CITY_ZONE_BACK, y1: CITY_ROWS - 1 }; }
 function cityEntrance() { return { gx: CITY_ENTRANCE_GX, gy: CITY_ROWS - 1 }; }
 function cityMigrateLayout(state) {
-  if (!state || (state.layoutV || 1) >= CITY_LAYOUT_V) return state;
-  var dx = Math.floor((CITY_COLS - CITY_OLD_COLS) / 2), dy = CITY_ROWS_BASE - CITY_OLD_ROWS_BASE;
-  (state.buildings || []).forEach(function (b) {
-    if (typeof b.gx === "number") b.gx += dx;
-    if (typeof b.gy === "number") b.gy += dy;   // eski ön sıralar yeni alanın önünde kalır, yeni alan arkaya/yanlara eklenir
-    if (typeof b.sx === "number") b.sx += 2 * dx;
-    if (typeof b.sy === "number") b.sy += 2 * dy;
-  });
-  state.layoutV = CITY_LAYOUT_V;
+  if (!state) return state;
+  var v = state.layoutV || 1;
+  while (v < CITY_LAYOUT_V) {   // her sürüm adımında yatayda ortala, dikeyde öne hizala (yeni alan arkaya/yanlara eklenir)
+    var from = CITY_LAYOUTS[v], to = CITY_LAYOUTS[v + 1], dx = Math.floor((to.cols - from.cols) / 2), dy = to.base - from.base;
+    (state.buildings || []).forEach(function (b) {
+      if (typeof b.gx === "number") b.gx += dx;
+      if (typeof b.gy === "number") b.gy += dy;
+      if (typeof b.sx === "number") b.sx += 2 * dx;
+      if (typeof b.sy === "number") b.sy += 2 * dy;
+    });
+    v++;
+  }
+  state.layoutV = v;
   return state;
 }
 var CITY_SELL_RATIO = 0.8; // yapı silinince maliyetin bu kadarı iade edilir
@@ -672,6 +677,28 @@ function cityDecorCells(list, exceptId) {   // içinde dekor olan ana kareler (b
   });
   return cells;
 }
+// Dekorlar nesnelerin üstüne konabilir (v3.23.0): bina karesine, başka dekorun yarım karesine (en çok 3 kat). Yola yalnızca onRoad olanlar (araç, koni, bariyer).
+var CITY_MAX_DECOR = 400, CITY_MAX_STACK = 3;
+function citySubStack(list, exceptId, sx, sy) {   // aynı yarım karedeki dekor sayısı
+  var n = 0;
+  list.forEach(function (b) {
+    if (b.id === exceptId || !cityIsDecor(b)) return;
+    var q = citySubOf(b);
+    if (q && q.sx === sx && q.sy === sy) n++;
+  });
+  return n;
+}
+function cityDecorCount(list, exceptId) { var n = 0; (list || cityState.buildings).forEach(function (b) { if (b.id !== exceptId && cityIsDecor(b)) n++; }); return n; }
+// Bu dekor bir nesnenin üstüne mi oturuyor? (bina karesi ya da başka dekorun yarım karesi) -> kayıtta up: 1
+function cityNeedsSupport(active, cell) {
+  var list = cityState.buildings, gx = Math.floor(cell.sx / 2), gy = Math.floor(cell.sy / 2);
+  var occId = cityOccupancy(list, active.id)[gx + "," + gy];
+  if (occId && occId !== "__entrance") {
+    var ob = list.filter(function (x) { return x.id === occId; })[0];
+    if (ob && !cityIsRoad(ob)) return true;
+  }
+  return citySubStack(list, active.id, cell.sx, cell.sy) > 0;
+}
 // Elindeki yapı `cell`e (bina: gx/gy, dekor: sx/sy) konabilir mi?
 function cityCanPlaceActive(active, cell) {
   if (!active || !cell) return false;
@@ -682,11 +709,15 @@ function cityCanPlaceActive(active, cell) {
     var gx = Math.floor(sx / 2), gy = Math.floor(sy / 2);
     if (sx < 0 || sy < 0 || gx >= CITY_COLS || gy >= CITY_ROWS || !cityCellInZone(gx, gy)) return false;
     var occId = cityOccupancy(list, active.id)[gx + "," + gy];
-    if (occId) {   // bina/yol karesi: yalnızca onRoad dekorlar (araç, koni, bariyer) yola konabilir
+    if (occId === "__entrance") return false;
+    if (occId) {
       var ob = list.filter(function (x) { return x.id === occId; })[0], type = cityTypeOf(active);
-      if (!(ob && cityIsRoad(ob) && type && type.onRoad)) return false;
+      if (ob && cityIsRoad(ob) && !(type && type.onRoad)) return false;   // yol yüzeyine süs konmaz; bina üstüne serbest
     }
-    return !citySubOccupancy(list, active.id)[sx + "," + sy];
+    if (citySubStack(list, active.id, sx, sy) >= CITY_MAX_STACK) return false;
+    var isNew = !list.some(function (x) { return x.id === active.id; });
+    if (isNew && cityDecorCount(list) >= CITY_MAX_DECOR) return false;
+    return true;
   }
   var span = cityItemSpan(active);
   if (!cityCanPlace(cell.gx, cell.gy, span, cityOccupancy(list, active.id))) return false;
@@ -798,6 +829,10 @@ function cityActiveItem() {
 }
 function buyBuilding(type) {
   if (cityActiveItem() || (cityState.coins || 0) < type.cost || cityTypeLocked(type)) return;
+  if (type.cat === "dekor" && !type.road && cityDecorCount() >= CITY_MAX_DECOR) {   // çok sayıda dekor sahneyi yavaşlatır
+    cityCelebrate(["🌳 Dekor sınırına ulaştın (" + CITY_MAX_DECOR + "). Birini kaldırıp yenisini koyabilirsin."]);
+    return;
+  }
   cityState.coins = roundCoins((cityState.coins || 0) - type.cost);
   if (cityState.target === type.name) {
     cityState.target = null;
@@ -929,11 +964,11 @@ function renderMarket() {
     item.innerHTML =
       '<div class="city-market-emoji">' + preview + '</div>' +
       '<div class="city-market-name">' + type.name + '</div>' +
-      '<div class="city-market-cost">' + type.cost + ' altın · ' + ((type.population || 0) > 0 ? '+' + type.population + ' nüfus' : 'süs') + '</div>' +
+      '<div class="city-market-cost">' + (type.cost > 0 ? type.cost + ' altın' : 'Ücretsiz') + ' · ' + ((type.population || 0) > 0 ? '+' + type.population + ' nüfus' : 'süs') + '</div>' +
       (locked ? '<div class="city-market-lock">🔒 ' + CITY_LEVELS[type.minLevel].name + ' seviyesinde açılır (' + CITY_LEVELS[type.minLevel].pop + ' nüfus)</div>' : "") +
       '<button type="button" class="city-market-buy-btn"' + (canAfford ? "" : " disabled") +
-      (busy ? ' title="Önce elindeki yapıyı yerleştir"' : (locked ? ' title="Şehir seviyesi yetmiyor"' : "")) + '>Satın Al</button>' +
-      (type.road || locked ? "" : '<button type="button" class="city-market-target-btn' + (isTarget ? " is-target" : "") + '">' + (isTarget ? "🎯 hedefin ✓" : "🎯 hedef yap") + '</button>');
+      (busy ? ' title="Önce elindeki yapıyı yerleştir"' : (locked ? ' title="Şehir seviyesi yetmiyor"' : "")) + '>' + (type.cost > 0 ? 'Satın Al' : 'Al') + '</button>' +
+      (type.road || locked || !(type.cost > 0) ? "" : '<button type="button" class="city-market-target-btn' + (isTarget ? " is-target" : "") + '">' + (isTarget ? "🎯 hedefin ✓" : "🎯 hedef yap") + '</button>');
     item.querySelector(".city-market-buy-btn").addEventListener("click", function () {
       buyBuilding(type);
     });
@@ -955,10 +990,11 @@ function renderCityViewStats() {
 function placeActiveItem(active, cell) {
   var span = cityItemSpan(active);
   if (cityIsDecor(active) && typeof cell.sx === "number" && typeof cell.sy === "number") {
+    if (cityNeedsSupport(active, cell)) active.up = 1; else delete active.up;   // bir nesnenin üstüne oturuyorsa: 3D'de yüzeyin yüksekliğine çıkar
     active.sx = cell.sx; active.sy = cell.sy;
     active.gx = Math.floor(cell.sx / 2); active.gy = Math.floor(cell.sy / 2);
   } else {
-    delete active.sx; delete active.sy;
+    delete active.sx; delete active.sy; delete active.up;
     active.gx = cell.gx;
     active.gy = cell.gy;
   }
